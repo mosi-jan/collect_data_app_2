@@ -156,7 +156,7 @@ class Tsetmc:
     # -------------------
     def collect_all_share_data(self):
         lock_status = False
-        self.print_c('worker: {0} :{1}'.format(current_process().name, 'start collect_all_share_data function'))
+        self.print_c('worker: {0} :{1}'.format(current_process().name, 'start run_collect_all_share_data function'))
 
         start_time = get_now_time_second()
 
@@ -234,7 +234,7 @@ class Tsetmc:
 
                 try:
                     self.print_c('worker: {0} : except: {1}'.format(current_process().name, 'rollback data'))
-                    self.db.get_all_share_data_rollback(en_symbol_12_digit_code, tsetmc_id, date_m)
+                    self.db.collect_all_share_data_rollback(en_symbol_12_digit_code, tsetmc_id, date_m)
                 finally:
                     self.lock.acquire()
                     self.running_list.remove(self.current_running_share)
@@ -736,6 +736,177 @@ class Tsetmc:
 
     # -------------------
     # گرفتن اطلاعات تمام سهامهای موجود
+    def collect_all_shares_info_multiprocess(self):
+        lock_status = False
+        self.print_c('worker: {0} :{1}'.format(current_process().name, 'start collect_all_shares_info function'))
+
+        start_time = get_now_time_second()
+
+        bourse_index = 32097828799138957
+        farabourse_index = 43685683301327984
+
+        bourse, bourse_error = self.get_shares_in_index(bourse_index)
+        farabourse, farabourse_error = self.get_shares_in_index(farabourse_index)
+
+        if bourse_error is None:
+            self.add_share_id_to_unread_page_list(bourse)
+
+        if farabourse_error is None:
+            self.add_share_id_to_unread_page_list(farabourse)
+
+        while self.get_status('stop_flag') is False:
+            self.set_status('last_run_time', get_now_time_second())
+
+            self.lock.acquire()
+            lock_status = True
+
+            # check exit condition
+            if len(self.wait_list) <= 0:
+                self.lock.release()
+                lock_status = False
+                self.print_c('worker: {0} :{1}'.format(current_process().name, 'wait list empty'))
+                break
+
+            #  گرفتن یک آیتم
+            # get new item
+            current_running_share_id = None
+            try:
+                current_running_share_id = self.wait_list.pop()
+                self.running_list.append(current_running_share_id)
+                self.lock.release()
+                lock_status = False
+
+            except Exception as e:
+                if current_running_share_id is not None: # error in running_list append item
+                    if current_running_share_id not in self.wait_list:
+                        self.wait_list.append(current_running_share_id)
+
+                current_running_share_id = None
+                self.lock.release()
+                lock_status = False
+                self.print_c('worker: {0} :{1} ;{2}'.format(current_process().name, 'get new share : fail', str(e)))
+                continue
+
+            self.set_status('current_running_share_id', current_running_share_id)
+
+            try:
+                self.print_c('worker: {0} :{1}'.format(current_process().name, 'start collect share info'))
+                self.set_status('state', 'running')
+
+                # get all related companies id
+                all_related_companies_id, all_related_companies_id_error = self.get_all_related_companies_id(current_running_share_id)
+                if all_related_companies_id_error is None:
+                    self.add_share_id_to_unread_page_list(all_related_companies_id)
+
+                # get share info
+                share_info, error = self.get_share_info(current_running_share_id)
+                if error is not None:
+                    self.lock.acquire()
+                    lock_status = True
+                    self.fail_list.append(current_running_share_id)
+                    self.running_list.remove(current_running_share_id)
+                    self.lock.release()
+                    lock_status = False
+                    self.print_c('worker: {0} fail collect_shares_info: info: {1} remind: {2} complete: {3}'.
+                                 format(current_process().name, current_running_share_id, len(self.wait_list), len(self.complete_list)))
+                    continue
+
+                adjust_info_1, error = self.get_share_adjust_info_1(current_running_share_id)
+                if error is not None:
+                    self.lock.acquire()
+                    lock_status = True
+                    self.fail_list.append(current_running_share_id)
+                    self.running_list.remove(current_running_share_id)
+                    self.lock.release()
+                    lock_status = False
+                    self.print_c('worker: {0} fail collect_shares_info: adjust_info_1: {1} remind: {2} complete: {3}'.
+                                 format(current_process().name, current_running_share_id, len(self.wait_list), len(self.complete_list)))
+                    continue
+
+                adjust_info_2, error = self.get_share_adjust_info_2(current_running_share_id)
+                if error is not None:
+                    self.lock.acquire()
+                    lock_status = True
+                    self.fail_list.append(current_running_share_id)
+                    self.running_list.remove(current_running_share_id)
+                    self.lock.release()
+                    lock_status = False
+                    self.print_c('worker: {0} fail collect_shares_info:adjust_info_2: {1} remind: {2} complete: {3}'.
+                                 format(current_process().name, current_running_share_id, len(self.wait_list), len(self.complete_list)))
+                    continue
+
+                share_info['tsetmc_id'] = current_running_share_id
+                self.db.add_share_info(share_info)
+
+                # ---
+                adjust_data = list()
+                en_symbol_12_digit_code = share_info['en_symbol_12_digit_code']
+
+                # سود
+                if len(adjust_info_1) > 0:
+                    adjust_type = 1
+                    for item in adjust_info_1:
+                        date_m = jalali_to_gregorian_int(item[0])
+                        old = item[2]
+                        new = item[1]
+                        coefficient = float(new / old)
+                        do_date = date_m
+                        adjust_data.append([en_symbol_12_digit_code, date_m, adjust_type,
+                                            old, new, coefficient, do_date])
+                # افزایش سرمایه
+                if len(adjust_info_2) > 0:
+                    adjust_type = 2
+                    for item in adjust_info_2:
+                        date_m = jalali_to_gregorian_int(item[0])
+                        old = item[2]
+                        new = item[1]
+                        coefficient = float(old / new)
+                        do_date = date_m
+                        adjust_data.append([en_symbol_12_digit_code, date_m, adjust_type,
+                                            old, new, coefficient, do_date])
+
+                if len(adjust_data) > 0:
+                    self.db.add_share_adjusted_coefficient(adjust_data)
+                # ---
+                self.lock.acquire()
+                lock_status = True
+                self.complete_list.append(current_running_share_id)
+                self.running_list.remove(current_running_share_id)
+                self.lock.release()
+                lock_status = False
+                self.print_c('worker: {0} True collect_shares_info: {1} remind: {2} complete: {3}'.
+                             format(current_process().name, current_running_share_id, len(self.wait_list), len(self.complete_list)))
+
+                # self.print_c('worker: {0} :{1}'.format(current_process().name, 'end collect data'))
+
+            except Exception  as e:
+                # sleep(5)
+                if lock_status is True:
+                    self.print_c('worker {0} except: lock status: {1} : {2} :{3}'.format(str(self.id), True, 13, str(e)))
+                    self.set_status('state', 'failing')
+                    self.lock.release()
+                else:
+                    self.print_c('worker {0} except: lock status: {1} : {2} :{3}'.format(str(self.id), False, 14, e))
+                    self.set_status('state', 'failing')
+
+                try:
+                    self.print_c('worker: {0} : except: {1}'.format(current_process().name, 'rollback data'))
+                    self.db.deleted_share_info(current_running_share_id)
+                finally:
+                    self.lock.acquire()
+                    self.running_list.remove(self.current_running_share)
+                    self.fail_list.append(self.current_running_share)
+                    self.lock.release()
+                    self.print_c('worker: {0} :{1}'.format(current_process().name, 'fail'))
+
+        self.print_c('worker: {0} :{1}'.format(current_process().name, 'quit'))
+
+        end_time = get_now_time_second()
+
+        self.print_c('runtime:{0}'.format(end_time - start_time), color='red')
+
+        return True
+
     def collect_all_shares_info(self):
         self.unreade_page = list()
         self.running_page = list()
@@ -1122,18 +1293,23 @@ class Tsetmc:
 
     def add_share_id_to_unread_page_list(self, id_list):
         try:
+            self.lock.acquire()
+
             for id in id_list:
-                if id in self.unreade_page:
+                if id in self.wait_list:
                     continue
-                if id in self.readed_page:
+                if id in self.complete_list:
                     continue
-                if id in self.running_page:
+                if id in self.running_list:
                     continue
-                if id in self.fail_readed_page:
+                if id in self.fail_list:
                     continue
-                self.unreade_page.append(id)
+                self.wait_list.append(id)
         except:
+            self.lock.release()
             return True
+
+        self.lock.release()
         return True
 
     def get_shares_in_index(self, index_id):
@@ -1626,7 +1802,7 @@ if __name__ == '__main__':
     a.print_c('end **********', 'blue')
 
 
-    # a.collect_all_share_data()
+    # a.run_collect_all_share_data()
 
     a.collect_all_shares_info()
     a.get_all_excel_share_daily_data(excel_path)

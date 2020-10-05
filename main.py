@@ -9,6 +9,6 @@ if __name__ == '__main__':
 
     res = cli.collect_all_shares_info()
     #res = cli.collect_all_index_daily_data()
-    #res = cli.run()
+    #res = cli.collect_all_share_data()
 
     print(res)

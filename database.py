@@ -190,7 +190,7 @@ class Database:
             return res['execute_status']
         return False
 
-    def get_max_thread_from_db(self, client_id):
+    def get_max_process_from_db(self, client_id):
         res = self.get_client_runtime_settings(client_id)
         if res is not False:
             return res['max_process']
@@ -229,7 +229,7 @@ class Database:
         return self.select_query(query, args, 1)
 
     # -------------
-    def get_all_share_data_rollback(self, en_symbol_12_digit_code, tsetmc_id, date_m):
+    def collect_all_share_data_rollback(self, en_symbol_12_digit_code, tsetmc_id, date_m):
         query = 'delete from shareholders_data where en_symbol_12_digit_code = %s and date_m = %s'
         args = (en_symbol_12_digit_code, date_m)
         self.command_query(query, args)
@@ -495,6 +495,11 @@ class Database:
                 'VALUES (%s, %s, %s, %s, %s, %s, %s)'
         args = data
         return self.command_query_many(query, args)
+    def deleted_share_info(self, current_running_share_id):
+        query = 'delete from share_info where tsetmc_id = %s'
+        args = (current_running_share_id,)
+        return self.command_query(query, args)
+
     # ----------------------------------
     def get_all_index_id(self):
         query = 'select en_index_12_digit_code, index_id from index_info'
@@ -513,6 +518,8 @@ class Database:
                 'GROUP BY date_m ORDER BY date_m DESC'
         args = ()
         return self.command_query(query, args, True)
+
+
 
 
 # ==========================================

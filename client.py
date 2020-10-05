@@ -49,7 +49,10 @@ class Client:
 
         return runtime_setting
 
-    def run(self):
+    def get_database_record_count(self):
+        return self.db_obj.get_database_record()
+
+    def collect_all_share_data(self):
         new_loop = True
         max_loop = 3
         loop_number = 0
@@ -108,7 +111,18 @@ class Client:
                 # گرفتن تعداد رکوردهای دیتابیس
                 before_record_count, err = self.get_database_record_count()
 
-                self.collect_data(wait_list)  # جمع آوری اطلاعات
+                # جمع آوری اطلاعات
+                # self.collect_data(wait_list)  # جمع آوری اطلاعات
+                collect_data_obj = collect_trade_data_multi_process(database_info=self.db_info,
+                                                                    max_process=self.setting['max_process'],
+                                                                    wait_list=wait_list,
+                                                                    client_id=self.client_id)
+
+                # self.print_c(1)
+                res = collect_data_obj.run_collect_all_share_data()
+
+                if res is False:
+                    collect_data_obj = None
 
                 # گرفتن تعداد رکوردهای دیتابیس
                 after_record_count, err = self.get_database_record_count()
@@ -125,24 +139,26 @@ class Client:
             sleep(1)
 
 
-    def get_database_record_count(self):
-        return self.db_obj.get_database_record()
 
-    def collect_data(self, wait_list):
+
+
+
+
+    def collect_all_shares_info(self):
         collect_data_obj = collect_trade_data_multi_process(database_info=self.db_info,
                                                             max_process=self.setting['max_process'],
-                                                            wait_list=wait_list,
+                                                            wait_list=list(),
                                                             client_id=self.client_id)
 
         self.print_c(1)
-        res = collect_data_obj.run()
+        res = collect_data_obj.run_collect_all_shares_info()
 
         if res is False:
             collect_data_obj = None
             # sleep(20)
         return res
 
-    def collect_all_shares_info(self):
+    def collect_all_shares_info0(self):
         from tsetmc import Tsetmc
 
         obj = Tsetmc(id=self.client_id, db_info=self.db_info,lock=None, wait_list=None, complete_list=None, running_list=None, fail_list=None, status={},
@@ -161,3 +177,20 @@ class Client:
         res = obj.collect_all_index_daily_data(excel_path='', mod=1)
 
         print(res)
+
+
+
+    # ====================
+    def collect_data(self, wait_list):
+        collect_data_obj = collect_trade_data_multi_process(database_info=self.db_info,
+                                                            max_process=self.setting['max_process'],
+                                                            wait_list=wait_list,
+                                                            client_id=self.client_id)
+
+        self.print_c(1)
+        res = collect_data_obj.run_collect_all_share_data()
+
+        if res is False:
+            collect_data_obj = None
+            # sleep(20)
+        return res
