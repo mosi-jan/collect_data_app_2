@@ -138,13 +138,7 @@ class Client:
     # ---------------------------------------------------
             sleep(1)
 
-
-
-
-
-
-
-    def collect_all_shares_info(self):
+    def collect_all_shares_info(self):  # multi processing
         collect_data_obj = collect_trade_data_multi_process(database_info=self.db_info,
                                                             max_process=self.setting['max_process'],
                                                             wait_list=list(),
@@ -158,7 +152,7 @@ class Client:
             # sleep(20)
         return res
 
-    def collect_all_shares_info0(self):
+    def collect_all_shares_info_single_processing(self):  # single processing
         from tsetmc import Tsetmc
 
         obj = Tsetmc(id=self.client_id, db_info=self.db_info,lock=None, wait_list=None, complete_list=None, running_list=None, fail_list=None, status={},
