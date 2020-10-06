@@ -6,9 +6,10 @@ from time import sleep
 
 
 if __name__ == '__main__':
-
     first_run = True
-    cli = Client(client_id=app_setting.client_id, db_info=app_setting.db_info)
+
+    cli = Client(client_id=app_setting.client_id,
+                 db_info=app_setting.get_db_info(db_server_id=app_setting.db_server_id))
 
     while True:
         now_time = get_now_time_datetime()

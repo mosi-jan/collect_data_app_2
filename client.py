@@ -112,7 +112,7 @@ class Client:
 
             if len(wait_list) > 0:
                 self.print_c('collect data')
-                print(wait_list)
+                # print(wait_list)
                 # گرفتن تعداد رکوردهای دیتابیس
                 before_record_count, err = self.get_database_record_count()
 
@@ -138,9 +138,9 @@ class Client:
                 else:
                     sum_new_record += (after_record_count - before_record_count)
 
-                print(before_record_count)
-                print(after_record_count)
-                print(sum_new_record)
+                print('before record count: {}'.format(before_record_count))
+                print('after record count: {}'.format(after_record_count))
+                print('sum new record: {}'.format(sum_new_record))
     # ---------------------------------------------------
             sleep(1)
 
