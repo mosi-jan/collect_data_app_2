@@ -3,8 +3,6 @@ import database
 from Log import *
 from date_converter import jalali_to_gregorian_int, gregorian_to_jalali_int
 from my_time import get_now_time_second
-# import client_setting
-# from time import sleep
 import xlrd
 from glob import glob
 import requests
@@ -23,6 +21,7 @@ class My_Response:
 
     def Error(self, error):
         self.error = error
+
 
 class Tsetmc:
 

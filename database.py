@@ -387,7 +387,6 @@ class Database:
         else:
             return self.command_query(query, args[0])
 
-
     # ----------------------------------
     def get_start_accept_date(self, en_symbol_12_digit_code):
         query = 'select * from share_info where en_symbol_12_digit_code = %s'
@@ -449,9 +448,6 @@ class Database:
             if res[0][0] > 0:
                 return True
         return False
-
-
-
 
     # ----------------------------------
     def add_share_info(self, info):
@@ -520,6 +516,36 @@ class Database:
         return self.command_query(query, args, True)
 
 
+    def add_index_info(self, info):
+        query = 'INSERT IGNORE INTO index_info (en_index_12_digit_code, index_id, fa_index_name, fa_index_code, ' \
+                'company_4_digit_code, company_en_name) ' \
+                'VALUES (%s, %s, %s, %s, %s, %s)'
+
+        args = (info['en_index_12_digit_code'], info['index_id'], info['fa_index_name'], info['fa_index_code'],
+                info['company_4_digit_code'], info['company_en_name'])
+
+        return self.command_query(query, args, True)
+    # ----------------------------------
+    def get_active_share_info(self):
+        query = 'select en_symbol_12_digit_code, tsetmc_id from share_info where is_active = 1'
+        args = ()
+        return self.select_query(query, args, 1)
+    # ----------------------------------
+    def get_share_adjusted_data(self, en_symbol_12_digit_code, date_m):
+        query = 'select * from share_adjusted_daily_data where en_symbol_12_digit_code = %s and date_m = %s'
+        args = (en_symbol_12_digit_code, date_m)
+        return self.select_query(query, args, 1)
+    def add_share_adjusted_data(self, data):
+        query = 'INSERT IGNORE INTO share_adjusted_daily_data ' \
+                '(en_symbol_12_digit_code, date_m, high_price, low_price, ' \
+                'open_price, close_price, trade_volume, end_price) ' \
+                'VALUES (%s, %s, %s, %s, %s, %s, %s, %s)'
+        args = data
+        return self.command_query_many(query, args)
+    def clear_share_adjusted_data(self, en_symbol_12_digit_code):
+        query = 'delete from share_adjusted_daily_data where en_symbol_12_digit_code = %s'
+        args = (en_symbol_12_digit_code)
+        return self.command_query(query, args)
 
 
 # ==========================================
@@ -581,33 +607,6 @@ class Database_old:
         return True
 
 
-
-    # ----------------------------------
-
-
-    def get_active_share_info(self):
-        query = 'select en_symbol_12_digit_code, tsetmc_id from share_info where is_active = 1'
-        args = ()
-        return self.select_query(query, args, 1)
-
-    def get_share_adjusted_data(self, en_symbol_12_digit_code, date_m):
-        query = 'select * from share_adjusted_daily_data where en_symbol_12_digit_code = %s and date_m = %s'
-        args = (en_symbol_12_digit_code, date_m)
-        return self.select_query(query, args, 1)
-
-    def add_share_adjusted_data(self, data):
-        query = 'INSERT IGNORE INTO share_adjusted_daily_data ' \
-                '(en_symbol_12_digit_code, date_m, high_price, low_price, ' \
-                'open_price, close_price, trade_volume, end_price) ' \
-                'VALUES (%s, %s, %s, %s, %s, %s, %s, %s)'
-        args = data
-        return self.command_query_many(query, args)
-
-    def clear_share_adjusted_data(self, en_symbol_12_digit_code):
-        query = 'delete from share_adjusted_daily_data where en_symbol_12_digit_code = %s'
-        args = (en_symbol_12_digit_code)
-        return self.command_query(query, args)
-
     # ----------------------------------
     def add_share_adjusted_coefficient0(self, data):
         query = 'INSERT IGNORE INTO adjusted_coefficient ' \
@@ -622,15 +621,6 @@ class Database_old:
         return self.command_query(query, args)
 
 
-    def add_index_info(self, info):
-        query = 'INSERT IGNORE INTO index_info (en_index_12_digit_code, index_id, fa_index_name, fa_index_code, ' \
-                'company_4_digit_code, company_en_name) ' \
-                'VALUES (%s, %s, %s, %s, %s, %s)'
-
-        args = (info['en_index_12_digit_code'], info['index_id'], info['fa_index_name'], info['fa_index_code'],
-                info['company_4_digit_code'], info['company_en_name'])
-
-        return self.command_query(query, args, True)
 
     def clean_table(self, source_table_name):
         query = 'delete from {0} where 1'.format(source_table_name)
