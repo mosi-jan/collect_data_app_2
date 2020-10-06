@@ -30,7 +30,7 @@ if __name__ == '__main__':
             print('collect_all_shares_info: {}'.format(cli.collect_all_shares_info()))
 
         # update index data
-        #print('collect_all_index_daily_data error: {}'.format(cli.collect_all_index_daily_data()))
+        print('collect_all_index_daily_data error: {}'.format(cli.collect_all_index_daily_data()))
 
         # update trade data
         print('collect_all_share_data: {}'.format(cli.collect_all_share_data()))

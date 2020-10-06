@@ -2,14 +2,14 @@
 # main linux : 1
 # laptop : 2
 # ----------------
-client_id = 2
+client_id = 1
 
 
 # local main linux : 1
 # local laptop : 2
 # remote main linux : 3
 # ----------------
-db_server_id = 3
+db_server_id = 1
 
 # ===============================
 def get_db_info(db_server_id):

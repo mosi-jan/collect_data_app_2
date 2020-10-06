@@ -56,7 +56,7 @@ class Client:
         new_loop = True
         max_loop = 3
         loop_number = 1
-        sum_new_record = 0
+        # sum_new_record = 0
         while True:
             #  check exit condition
             if loop_number > max_loop:
@@ -114,7 +114,7 @@ class Client:
                 self.print_c('collect data')
                 # print(wait_list)
                 # گرفتن تعداد رکوردهای دیتابیس
-                before_record_count, err = self.get_database_record_count()
+                # before_record_count, err = self.get_database_record_count()
 
                 # جمع آوری اطلاعات
                 # self.collect_data(wait_list)  # جمع آوری اطلاعات
@@ -123,24 +123,19 @@ class Client:
                                                                     wait_list=wait_list,
                                                                     client_id=self.client_id)
 
-                # self.print_c(1)
                 collect_data_obj.run_collect_all_share_data()
 
-                # res = collect_data_obj.run_collect_all_share_data()
-                # if res is False:
-                #    collect_data_obj = None
-
                 # گرفتن تعداد رکوردهای دیتابیس
-                after_record_count, err = self.get_database_record_count()
+                # after_record_count, err = self.get_database_record_count()
 
-                if before_record_count > after_record_count:
-                    sum_new_record += (before_record_count - after_record_count)
-                else:
-                    sum_new_record += (after_record_count - before_record_count)
+                # if before_record_count > after_record_count:
+                #    sum_new_record += (before_record_count - after_record_count)
+                # else:
+                #    sum_new_record += (after_record_count - before_record_count)
 
-                print('before record count: {}'.format(before_record_count))
-                print('after record count: {}'.format(after_record_count))
-                print('sum new record: {}'.format(sum_new_record))
+                # print('before record count: {}'.format(before_record_count))
+                # print('after record count: {}'.format(after_record_count))
+                # print('sum new record: {}'.format(sum_new_record))
     # ---------------------------------------------------
             sleep(1)
 
