@@ -55,23 +55,28 @@ class Client:
     def collect_all_share_data(self):
         new_loop = True
         max_loop = 3
-        loop_number = 0
+        loop_number = 1
         sum_new_record = 0
         while True:
-            loop_number += 1
-
             #  check exit condition
             if loop_number > max_loop:
                 self.print_c('exit client in max loop')
                 break  # exit function
 
-            self.print_c('loop number ' + str(loop_number), color='blue')
+            # if self.setting['last']
+            if new_loop is True:
+                self.print_c('loop number ' + str(loop_number), color='blue')
+
+            else:
+                if self.setting['last'] >= self.setting['end']:
+                    loop_number += 1
+                    self.print_c('loop number ' + str(loop_number), color='blue')
 
             #  load setting
             self.print_c('get setting')
             self.setting = self.get_setting(is_new_loop=new_loop)
             if self.setting is False:
-                self.print_c('cant get setting')
+                self.print_c('cant get setting: loop_number += 1')
                 loop_number += 1
                 continue
 
@@ -119,10 +124,11 @@ class Client:
                                                                     client_id=self.client_id)
 
                 # self.print_c(1)
-                res = collect_data_obj.run_collect_all_share_data()
+                collect_data_obj.run_collect_all_share_data()
 
-                if res is False:
-                    collect_data_obj = None
+                # res = collect_data_obj.run_collect_all_share_data()
+                # if res is False:
+                #    collect_data_obj = None
 
                 # گرفتن تعداد رکوردهای دیتابیس
                 after_record_count, err = self.get_database_record_count()
