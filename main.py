@@ -36,5 +36,5 @@ if __name__ == '__main__':
         print('collect_all_share_data: {}'.format(cli.collect_all_share_data()))
 
         offset = datetime.timedelta(hours=18, minutes=0, seconds=0) - now_timedelta
-        print('sleep time {} second'.format(offset.seconds))
+        print('now time: {} ,sleep time {} second'.format(get_now_time_datetime().time(), offset.seconds))
         sleep(offset.seconds)
