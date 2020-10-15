@@ -173,8 +173,65 @@ class Client:
 
         print(res)
 
+    def find_shares_fail_source_data(self, latest_day=None):
+        # get candidate list
+        #  load setting
+        self.print_c('get setting')
+        self.setting = self.get_setting(is_new_loop=False)
+        if self.setting is False:
+            self.print_c('cant get setting')
+            return False, 'cant get setting'
+
+        #  check exit condition
+        self.print_c('check exit condition')
+        if self.setting['execute_status'] > 0:
+            self.print_c('exit client from user')
+            return True, 'exit client from user'
+
+        #  load latest day from server
+        if latest_day is None:
+            latest_day = self.db_obj.get_latest_open_day()
+            if latest_day is False:
+                self.print_c('cant get latest_day')
+                return False, 'cant get latest_day'
+
+        #  load wait list from server
+        self.print_c('load wait list')
+        wait_list = self.db_obj.get_share_closed_list(end_date=latest_day)
+        if wait_list is False:
+            self.print_c('cant get wait list from server')
+            return False, 'cant get wait list from server'
+
+        # update setting
+        self.db_obj.set_client_runtime_setting(client_id=self.client_id, data=self.setting)
+
+        if len(wait_list) > 0:
+            self.print_c('find shares fail source data')
 
 
+            # run function to test list
+            collect_data_obj = collect_trade_data_multi_process(database_info=self.db_info,
+                                                                max_process=self.setting['max_process'],
+                                                                wait_list=wait_list,
+                                                                client_id=self.client_id)
+
+            res = collect_data_obj.run_find_shares_fail_source_data(latest_day=latest_day)
+
+            if res is False:
+                return res, 'error on run_find_shares_fail_source_data() function'
+
+            return res, None
+
+        return True, 'empty candidate list'
+
+
+
+
+    # ====================
+    def test_db_function(self):
+        res = self.db_obj.get_latest_open_day()
+        print(res)
+        #print(len(res))
     # ====================
     def collect_data(self, wait_list):
         collect_data_obj = collect_trade_data_multi_process(database_info=self.db_info,

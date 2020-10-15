@@ -32,6 +32,9 @@ if __name__ == '__main__':
         # update index data
         print('collect_all_index_daily_data error: {}'.format(cli.collect_all_index_daily_data()))
 
+        # find source fail data
+        print('find_shares_fail_source_data error: {}'.format(cli.find_shares_fail_source_data()))
+
         # update trade data
         print('collect_all_share_data: {}'.format(cli.collect_all_share_data()))
 

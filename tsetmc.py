@@ -1615,6 +1615,153 @@ class Tsetmc:
         return result, error
 
     # -------------------
+    def find_all_share_source_fail_data(self, latest_day):
+        lock_status = False
+        self.print_c('worker: {0} :{1}'.format(current_process().name, 'start find_all_share_source_fail_data function'))
+
+        start_time = get_now_time_second()
+
+        while self.get_status('stop_flag') is False:
+            self.set_status('last_run_time', get_now_time_second())
+
+            self.lock.acquire()
+            lock_status = True
+
+            # check exit condition
+            if len(self.wait_list) <= 0:
+                self.lock.release()
+                lock_status = False
+                self.print_c('worker: {0} :{1}'.format(current_process().name, 'wait list empty'))
+                break
+
+            #  گرفتن یک آیتم
+            # get new item
+            try:
+                self.current_running_share = None
+                self.current_running_share = self.wait_list.pop()
+                self.running_list.append(self.current_running_share)
+                self.lock.release()
+                lock_status = False
+
+            except Exception as e:
+                if self.current_running_share is not None: # error in running_list append item
+                    if self.current_running_share not in self.wait_list:
+                        self.wait_list.append(self.current_running_share)
+
+                self.current_running_share = None
+                self.lock.release()
+                lock_status = False
+                self.print_c('worker: {0} :{1} ;{2}'.format(current_process().name, 'get new share : fail', str(e)))
+                continue
+
+            self.set_status('current_running_share', self.current_running_share)
+
+            en_symbol_12_digit_code = self.current_running_share[0]
+            tsetmc_id = self.current_running_share[1]
+            date_m = self.current_running_share[2]
+
+            self.set_status('tsetmc_id_date_m', str(tsetmc_id) + ':' + str(date_m))
+            self.set_status('en_symbol_12_digit_code', str(en_symbol_12_digit_code))
+            self.set_status('tsetmc_id', str(tsetmc_id))
+            self.set_status('date_m', str(date_m))
+
+            try:
+                self.print_c('worker: {0} :{1}'.format(current_process().name, 'start collect data'))
+                self.set_status('state', 'running')
+                result, error = self.test_share_end_accept_date(self.current_running_share, latest_day)
+
+                if result is False:
+                    self.print_c('--- result: {0}, error: {1}'.format(result, error))
+                    raise Exception(error)
+
+                self.lock.acquire()
+                lock_status = True
+                self.running_list.remove(self.current_running_share)
+                self.complete_list.append(self.current_running_share)
+                self.lock.release()
+                lock_status = False
+
+                self.print_c('worker: {0} :{1}'.format(current_process().name, 'end collect data'))
+
+            except Exception  as e:
+                # sleep(5)
+                if lock_status is True:
+                    self.print_c('worker {0} except: lock status: {1} : {2} :{3}'.format(str(self.id), True, 13, str(e)))
+                    self.set_status('state', 'failing')
+                    self.lock.release()
+                else:
+                    self.print_c('worker {0} except: lock status: {1} : {2} :{3}'.format(str(self.id), False, 14, e))
+                    self.set_status('state', 'failing')
+
+                try:
+                    self.print_c('worker: {0} : except: {1}'.format(current_process().name, 'rollback data'))
+                    self.db.collect_all_share_data_rollback(en_symbol_12_digit_code, tsetmc_id, date_m)
+                finally:
+                    self.lock.acquire()
+                    self.running_list.remove(self.current_running_share)
+                    self.fail_list.append(self.current_running_share)
+                    self.lock.release()
+                    self.print_c('worker: {0} :{1}'.format(current_process().name, 'fail'))
+
+        self.print_c('worker: {0} :{1}'.format(current_process().name, 'quit'))
+
+        end_time = get_now_time_second()
+
+        self.print_c('runtime:{0}'.format(end_time - start_time), color='red')
+
+        return True
+
+    def test_share_end_accept_date(self, current_running_share_info, latest_day):
+        result = None
+        error = None
+
+        en_symbol_12_digit_code = current_running_share_info[0]
+        tsetmc_id = current_running_share_info[1]
+        date_m = current_running_share_info[2]
+
+        url = 'http://cdn.tsetmc.com/Loader.aspx?ParTree=15131P&i={0}&d={1}'.format(tsetmc_id, latest_day)
+        response = self.get_web_data(url)
+
+        # check response code
+        if response.status_code != 200:
+            error = 'html error code:{0}'.format(response.status_code)
+            result = False
+            return result, error
+
+        var_name = 'var ClosingPriceData='  # ---- اطلاعات ثانیه ای----
+        closing_price_data, closing_price_data_error = self.get_var_list(response, var_name)
+        if closing_price_data_error is not None:
+            error = closing_price_data_error
+            result = False
+            return result, error
+
+        if len(closing_price_data) == 0:  # روز غیر معاملاتی
+            candidate_end_accept_date = date_m  # کاندید روز حذف نماد
+            self.set_end_accept_date(en_symbol_12_digit_code, candidate_end_accept_date)
+            print(1)
+            error = None
+            result = True
+            return result, error
+        else:
+            # add share to fail source data table
+            res = self.db.add_share_to_fail_source_data_share(en_symbol_12_digit_code=en_symbol_12_digit_code,
+                                                                 tsetmc_id=tsetmc_id,
+                                                                 date_m=date_m)
+
+            if res is True:
+                # reset_end_accept_date
+                res = self.db.reset_end_accept_date(en_symbol_12_digit_code=en_symbol_12_digit_code)
+                if res is True:
+                    error = None
+                    result = True
+                else:
+                    error = res
+                    result = False
+            else:
+                error = res
+                result = False
+
+            return result, error
 
 
 tsetmc_excel_path = 'C:\\Users\\Mostafa_Laptop\\Documents\\TseClient 2.00\\'

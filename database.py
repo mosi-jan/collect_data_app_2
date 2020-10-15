@@ -222,6 +222,7 @@ class Database:
                 ' ((a.en_symbol_12_digit_code, a.date_m) not in (SELECT share_daily_data.en_symbol_12_digit_code, share_daily_data.date_m FROM share_daily_data)) AND' \
                 ' ((a.en_symbol_12_digit_code, a.date_m) not in (SELECT fail_integrity_share.en_symbol_12_digit_code, fail_integrity_share.date_m FROM fail_integrity_share WHERE fail_integrity_share.fail_count >= {0})) AND' \
                 ' ((a.en_symbol_12_digit_code, a.date_m) not in (SELECT fail_hang_share.en_symbol_12_digit_code, fail_hang_share.date_m FROM fail_hang_share WHERE fail_hang_share.fail_count >= {1})) AND' \
+                ' ((a.en_symbol_12_digit_code, a.date_m) not in (SELECT fail_source_data_share.en_symbol_12_digit_code, fail_source_data_share.date_m FROM fail_source_data_share)) AND' \
                 ' ((a.en_symbol_12_digit_code, a.date_m) not in (SELECT fail_other_share.en_symbol_12_digit_code, fail_other_share.date_m FROM fail_other_share WHERE fail_other_share.fail_count >= {2}))' \
                 .format(max_integrity_count, max_hang_count, max_other_count)
 
@@ -264,6 +265,12 @@ class Database:
         query = 'insert into fail_hang_share (en_symbol_12_digit_code, date_m) ' \
                 'VALUES (%s, %s) ON DUPLICATE KEY UPDATE fail_count = fail_count + 1'
         args = (en_symbol_12_digit_code, str(date_m))
+        return self.command_query(query, args)
+
+    def add_share_to_fail_source_data_share(self, en_symbol_12_digit_code, tsetmc_id, date_m):
+        query = 'insert into fail_source_data_share (en_symbol_12_digit_code, tsetmc_id, date_m) VALUES (%s, %s, %s) ' \
+                'ON DUPLICATE KEY UPDATE date_m=date_m'
+        args = (en_symbol_12_digit_code, tsetmc_id, date_m)
         return self.command_query(query, args)
 
     # -------------
@@ -422,6 +429,12 @@ class Database:
 
         return self.command_query(query, args, True)
 
+    def reset_end_accept_date(self, en_symbol_12_digit_code):
+        query = 'update share_info set max_date = %s, is_active = %s where en_symbol_12_digit_code = %s'
+        args = (0, 1, en_symbol_12_digit_code)
+
+        return self.command_query(query, args, True)
+
     # ----------------------------------
     def add_share_second_data(self, en_symbol_12_digit_code, args_list):
         query = 'INSERT IGNORE INTO share_second_data (en_symbol_12_digit_code, date_time, ' \
@@ -547,6 +560,21 @@ class Database:
         args = (en_symbol_12_digit_code)
         return self.command_query(query, args)
 
+    # ----------------------------------
+    def get_share_closed_list(self, end_date):
+        query = 'SELECT en_symbol_12_digit_code, tsetmc_id, max_date FROM cd2.share_info WHERE max_date < %s AND max_date > 0'
+        args = (end_date,)
+
+        return self.select_query(query, args, 1)
+
+    def get_latest_open_day(self):
+        query = 'SELECT max(date_m) FROM open_days'
+        args = ()
+
+        res = self.select_query(query, args, 1)
+        if res is not False:
+            return res[0][0]
+        return False
 
 # ==========================================
 class Database_old:
