@@ -11,6 +11,7 @@ from multiprocessing import current_process
 import threading
 import ast
 
+from time import sleep
 
 class My_Response:
     status_code = 0
@@ -97,12 +98,22 @@ class Tsetmc:
         return self.obj_status[item]
 
     def get_var_list(self, response, var_name):
+        # -----------------------------------------------------------------------
+        # error_codes:
+        # -1 ==> no error
+        # 2001 ==> error on get_var_list function: cant find start position
+        # 2002 ==> error on get_var_list function: cant find end position
+        # 2003 ==> error on get_var_list function: much long list
+        # 2004 ==> error on get_var_list function: get_var_list another error
+        # -----------------------------------------------------------------------
+
         # fins start position
         start_pos = response.text.find(var_name)
         if start_pos < 0:
             result = False
             error = 'cant find start position'
-            return result, error
+            error_code = 2001
+            return result, error, error_code
 
         start_pos += len(var_name)
 
@@ -111,25 +122,28 @@ class Tsetmc:
         if end_pos < 0:
             result = False
             error = 'cant find end position'
-            return result, error
+            error_code = 2002
+            return result, error, error_code
 
         #if result is True:
         var_str = str( response.text[start_pos:end_pos])
-        if len(var_str) > 15000000:
+        if len(var_str) > 1000000000:
             result = False
-            error = 'cant get list: much long list'
-            return result, error
+            error = 'cant get list: much long list: {}'.format(len(var_str))
+            error_code = 2003
+            return result, error, error_code
 
         try:
             # self.print_c('{3}  start_pos:{0}  end_pos:{1}  var_str_len:{2}'.format(start_pos, end_pos, len(var_str), var_name))
             var_list = ast.literal_eval(var_str)
             result = var_list
             error = None
+            error_code = -1
         except Exception as e:
             result = False
             error = 'get_var_list error: {0}'.format(str(e))
-
-        return result, error
+            error_code = 2004
+        return result, error, error_code
 
     # -------------------
     def get_web_data(self, url, timeout=None):
@@ -155,6 +169,9 @@ class Tsetmc:
     # -------------------
     def collect_all_share_data(self):
         lock_status = False
+        error = None
+        error_code = None
+
         self.print_c('worker: {0} :{1}'.format(current_process().name, 'start run_collect_all_share_data function'))
 
         start_time = get_now_time_second()
@@ -206,11 +223,11 @@ class Tsetmc:
             try:
                 self.print_c('worker: {0} :{1}'.format(current_process().name, 'start collect data'))
                 self.set_status('state', 'running')
-                result, error = self.get_share_data(self.current_running_share)
+                result, error, error_code = self.get_share_data(self.current_running_share)
 
                 if result is False:
                     self.print_c('--- result: {0}, error: {1}'.format(result, error))
-                    raise Exception(error)
+                    raise Exception((error, error_code))
 
                 self.lock.acquire()
                 lock_status = True
@@ -224,16 +241,17 @@ class Tsetmc:
             except Exception  as e:
                 # sleep(5)
                 if lock_status is True:
-                    self.print_c('worker {0} except: lock status: {1} : {2} :{3}'.format(str(self.id), True, 13, str(e)))
+                    self.print_c('worker {0} except: lock status: {1} ; (error, error_code): {2}'.format(str(self.id), True, str(e)))
                     self.set_status('state', 'failing')
                     self.lock.release()
                 else:
-                    self.print_c('worker {0} except: lock status: {1} : {2} :{3}'.format(str(self.id), False, 14, e))
+                    # self.print_c('worker {0} except: lock status: {1} : {2} :{3}'.format(str(self.id), False, 14, e))
+                    self.print_c('worker {0} except: lock status: {1} ; (error, error_code): {2}'.format(str(self.id), False, str(e)))
                     self.set_status('state', 'failing')
 
                 try:
                     self.print_c('worker: {0} : except: {1}'.format(current_process().name, 'rollback data'))
-                    self.db.collect_all_share_data_rollback(en_symbol_12_digit_code, tsetmc_id, date_m)
+                    self.db.collect_all_share_data_rollback(en_symbol_12_digit_code, tsetmc_id, date_m, error_msg=error, error_code=error_code)
                 finally:
                     self.lock.acquire()
                     self.running_list.remove(self.current_running_share)
@@ -250,466 +268,534 @@ class Tsetmc:
         return True
 
     def get_share_data(self, share_info):
+        # -----------------------------------------------------------------------
+        # error_codes:
+        # -1 ==> no error
+        # 9000 ==> hang process
+
+        # 2001 ==> error on get_var_list function: cant find start position
+        # 2002 ==> error on get_var_list function: cant find end position
+        # 2003 ==> error on get_var_list function: much long list
+        # 2004 ==> error on get_var_list function: get_var_list another error
+
+        # 1001 ==> error on database function: add_share_daily_data
+        # 1002 ==> error on database function: add_shareholder_data
+        # 1003 ==> error on database function: add_share_sub_trad_data
+        # 1004 ==> error on database function: add_share_second_data
+        # < 1000 ==> html error code
+        # -----------------------------------------------------------------------
         result = None
         error = None
+        error_code = -1
 
-        en_symbol_12_digit_code = share_info[0]
-        tsetmc_id = share_info[1]
-        date_m = share_info[2]
+        try:
+            en_symbol_12_digit_code = share_info[0]
+            tsetmc_id = share_info[1]
+            date_m = share_info[2]
 
-        url = 'http://cdn.tsetmc.com/Loader.aspx?ParTree=15131P&i={0}&d={1}'.format(tsetmc_id, date_m)
-        response = self.get_web_data(url)
+            url = 'http://cdn.tsetmc.com/Loader.aspx?ParTree=15131P&i={0}&d={1}'.format(tsetmc_id, date_m)
+            response = self.get_web_data(url)
 
-        # check response code
-        if response.status_code != 200:
-            error = 'html error code:{0}'.format(response.status_code)
-            result = False
-            return result, error
+            # check response code
+            if response.status_code != 200:
+                error = 'html error code:{0}'.format(response.status_code)
+                error_code = response.status_code
+                result = False
+                return result, error, error_code
 
-        # ------------------------------------
-        # get all data list
-        # var_name = 'var IntraDayPriceData='  # ---- کندل های نمودار -----
-        # var_name = 'var ShareHolderData='  # --- سهامداران ابتدای روز -----
-        var_name = 'var InstSimpleData='  # ---- اطلاعات نمودار ----
-        share_info_data, share_info_data_error = self.get_var_list(response, var_name)
-        if share_info_data_error is not None:
-            error = share_info_data_error
-            result = False
-            return result, error
+            # ------------------------------------
+            # get all data list
+            # var_name = 'var IntraDayPriceData='  # ---- کندل های نمودار -----
+            # var_name = 'var ShareHolderData='  # --- سهامداران ابتدای روز -----
+            var_name = 'var InstSimpleData='  # ---- اطلاعات نمودار ----
+            share_info_data, share_info_data_error, share_info_data_error_code = self.get_var_list(response, var_name)
+            if share_info_data_error is not None:
+                error = share_info_data_error
+                error_code = share_info_data_error_code
+                result = False
+                return result, error, error_code
 
-        var_name = 'var IntraTradeData='  # ---- ریز معاملات ------
-        sub_trade_data, sub_trade_data_error = self.get_var_list(response, var_name)
-        if sub_trade_data_error is not None:
-            error = sub_trade_data_error
-            result = False
-            return result, error
+            var_name = 'var IntraTradeData='  # ---- ریز معاملات ------
+            sub_trade_data, sub_trade_data_error, sub_trade_data_error_code = self.get_var_list(response, var_name)
+            if sub_trade_data_error is not None:
+                error = sub_trade_data_error
+                error_code = sub_trade_data_error_code
+                result = False
+                return result, error, error_code
 
-        var_name = 'var ShareHolderDataYesterday='  # --- سهامداران انتهای روز ---
-        share_holder_data, share_holder_data_error = self.get_var_list(response, var_name)
-        if share_holder_data_error is not None:
-            error = share_holder_data_error
-            result = False
-            return result, error
-        # add date_m to list
-        for i in share_holder_data:
-            i[4] = date_m
+            var_name = 'var ShareHolderDataYesterday='  # --- سهامداران انتهای روز ---
+            share_holder_data, share_holder_data_error, share_holder_data_error_code = self.get_var_list(response, var_name)
+            if share_holder_data_error is not None:
+                error = share_holder_data_error
+                error_code = share_holder_data_error_code
+                result = False
+                return result, error, error_code
+            # add date_m to list
+            for i in share_holder_data:
+                i[4] = date_m
 
-        var_name = 'var ClientTypeData='  # --- حقیقی حقوقی -----
-        person_legal_data, person_legal_data_error = self.get_var_list(response, var_name)
-        if person_legal_data_error is not None:
-            error = person_legal_data_error
-            result = False
-            return result, error
+            var_name = 'var ClientTypeData='  # --- حقیقی حقوقی -----
+            person_legal_data, person_legal_data_error, person_legal_data_error_code = self.get_var_list(response, var_name)
+            if person_legal_data_error is not None:
+                error = person_legal_data_error
+                error_code = person_legal_data_error_code
+                result = False
+                return result, error, error_code
 
-        var_name = 'var BestLimitData='  # --- پیشنهاد های خرید و فروش -----
-        buy_sell_order_data, buy_sell_order_data_error = self.get_var_list(response, var_name)
-        if buy_sell_order_data_error is not None:
-            error = buy_sell_order_data_error
-            result = False
-            return result, error
+            # var_name = 'var BestLimitData='  # --- پیشنهاد های خرید و فروش -----
+            # buy_sell_order_data, buy_sell_order_data_error, buy_sell_order_data_error_code = self.get_var_list(response, var_name)
+            # if buy_sell_order_data_error is not None:
+            #    error = buy_sell_order_data_error
+            #    error_code = buy_sell_order_data_error_code
+            #    result = False
+            #    return result, error, error_code
 
-        var_name = 'var ClosingPriceData='  # ---- اطلاعات ثانیه ای----
-        closing_price_data, closing_price_data_error = self.get_var_list(response, var_name)
-        if closing_price_data_error is not None:
-            error = closing_price_data_error
-            result = False
-            return result, error
+            var_name = 'var ClosingPriceData='  # ---- اطلاعات ثانیه ای----
+            closing_price_data, closing_price_data_error, closing_price_data_error_code = self.get_var_list(response, var_name)
+            if closing_price_data_error is not None:
+                error = closing_price_data_error
+                error_code = closing_price_data_error_code
+                result = False
+                return result, error, error_code
 
-        var_name = 'var InstrumentStateData='  # ---- اطلاعات تغییر وضعیت نماد -----
-        instrument_state_data, instrument_state_data_error = self.get_var_list(response, var_name)
-        if instrument_state_data_error is not None:
-            error = instrument_state_data_error
-            result = False
-            return result, error
+            var_name = 'var InstrumentStateData='  # ---- اطلاعات تغییر وضعیت نماد -----
+            instrument_state_data, instrument_state_data_error, instrument_state_data_error_code = self.get_var_list(response, var_name)
+            if instrument_state_data_error is not None:
+                error = instrument_state_data_error
+                error_code = instrument_state_data_error_code
+                result = False
+                return result, error, error_code
 
-        # ------------------------------------
-        # check exit status
-        if len(instrument_state_data) == 0:  # پذیرش نشده
-            lower_than_start_accept_date = date_m
-            self.set_start_accept_date(en_symbol_12_digit_code, lower_than_start_accept_date)
-            error = None
-            result = True
-            return result, error
+            # ------------------------------------
+            # check exit status
+            if len(instrument_state_data) == 0:  # پذیرش نشده
+                lower_than_start_accept_date = date_m
+                self.set_start_accept_date(en_symbol_12_digit_code, lower_than_start_accept_date)
+                error = None
+                error_code = -1
+                result = True
+                return result, error, error_code
 
-        if len(closing_price_data) == 0:  # روز غیر معاملاتی
-            candidate_end_accept_date = date_m  # کاندید روز حذف نماد
-            self.set_end_accept_date(en_symbol_12_digit_code, candidate_end_accept_date)
-            error = None
-            result = True
-            return result, error
+            if len(closing_price_data) == 0:  # روز غیر معاملاتی
+                candidate_end_accept_date = date_m  # کاندید روز حذف نماد
+                self.set_end_accept_date(en_symbol_12_digit_code, candidate_end_accept_date)
+                error = None
+                error_code = -1
+                result = True
+                return result, error, error_code
 
-        # ------------------------------------
-        # calculate daily data from sub trade date
-        first_price = 0
-        last_price = 0
-        min_price = 0
-        max_price = 0
-        end_price = 0
-        trade_count = 0
-        trade_volume = 0
-        trade_value = 0
-        last_trade_time = 0
-        yesterday_price = int(closing_price_data[0][5])
+            # ------------------------------------
+            # calculate daily data from sub trade date
+            first_price = 0
+            last_price = 0
+            min_price = 0
+            max_price = 0
+            end_price = 0
+            trade_count = 0
+            trade_volume = 0
+            trade_value = 0
+            last_trade_time = 0
+            yesterday_price = int(closing_price_data[0][5])
 
-        legal_buy_count = 0
-        legal_buy_volume = 0
-        legal_buy_value = 0
-        legal_buy_avg_price = 0
-        person_buy_count = 0
-        person_buy_volume = 0
-        person_buy_value = 0
-        person_buy_avg_price = 0
-        legal_sell_count = 0
-        legal_sell_volume = 0
-        legal_sell_value = 0
-        legal_sell_avg_price = 0
-        person_sell_count = 0
-        person_sell_volume = 0
-        person_sell_value = 0
-        person_sell_avg_price = 0
+            legal_buy_count = 0
+            legal_buy_volume = 0
+            legal_buy_value = 0
+            legal_buy_avg_price = 0
+            person_buy_count = 0
+            person_buy_volume = 0
+            person_buy_value = 0
+            person_buy_avg_price = 0
+            legal_sell_count = 0
+            legal_sell_volume = 0
+            legal_sell_value = 0
+            legal_sell_avg_price = 0
+            person_sell_count = 0
+            person_sell_volume = 0
+            person_sell_value = 0
+            person_sell_avg_price = 0
 
-        status = ''
-        share_count = int(share_info_data[8])
-        base_volume = int(share_info_data[9])
+            status = ''
+            share_count = int(share_info_data[8])
+            base_volume = int(share_info_data[9])
 
-        # ----------------
-        sub_trade_data_list = list()
+            # ----------------
+            sub_trade_data_list = list()
 
-        min_num = len(sub_trade_data)
-        max_num = 0
+            min_num = len(sub_trade_data)
+            max_num = 0
 
-        for item in sub_trade_data:
-            # ---------
-            num = int(item[0])
-            time = int(item[1].replace(':', ''))
-            volume = int(item[2])
-            price = int(item[3])
-            flag = int(item[4])
+            for item in sub_trade_data:
+                # ---------
+                num = int(item[0])
+                time = int(item[1].replace(':', ''))
+                volume = int(item[2])
+                price = int(item[3])
+                flag = int(item[4])
 
-            # existing data
-            if sub_trade_data_list.count([time, num, volume, price, flag]) > 0:
-                continue
-
-            sub_trade_data_list.append([time, num, volume, price, flag])
-
-            if len(sub_trade_data_list) == 1:
-                min_price = price
-                max_price = price
-
-            # ---------------
-            if flag == 0:
-
-                if num <= min_num:
-                    min_num = num
-                    first_price = price
-
-                if num >= max_num:
-                    max_num = num
-                    last_price = price
-                    last_trade_time = time
-
-                if min_price > price:
-                    min_price = price
-
-                if max_price < price:
-                    max_price = price
-
-                trade_volume += volume
-                trade_value += volume * price
-
-                trade_count += 1
-
-            if trade_count % 100 == 0:
-                self.set_status('last_run_time', get_now_time_second())
-                #   self.print_c('sub_trade_data loop count: {0}'.format(trade_count / 100))
-
-        if trade_volume > 0:
-            if trade_volume < base_volume:
-                end_price = round(((trade_value / trade_volume) - yesterday_price) * (trade_volume / base_volume) +
-                                  yesterday_price)
-            else:
-                end_price = round(trade_value / trade_volume)
-        else:
-            # ممکن است ریز معاملات خالی باشد
-            if len(closing_price_data) > 1:
-                #print(1)
-                # fail in sub trade date
-                #for item in closing_price_data:
-                for i in range(len(closing_price_data)):
-                    if i == 0:
-                        #print(2)
-                        continue
-                    # dt = str(closing_price_data[i][0]).split(' ')
-                    # time = int(dt[1].replace(':', ''))
-                    time = int(closing_price_data[i][12])
-                    num = int(closing_price_data[i][8])
-                    volume = int(closing_price_data[i][9]) - int(closing_price_data[i - 1][9])
-                    # price = (int(closing_price_data[i][10]) - int(closing_price_data[i - 1][10])) / volume
-                    price = int(closing_price_data[i][2])
-                    flag = 0
-
-                    if sub_trade_data_list.count([time, num, volume, price, flag]) > 0:
-                        #print(3)
-                        continue
-
-                    sub_trade_data_list.append([time, num, volume, price, flag])
-                    # ----------
-
-                min_price = int(closing_price_data[-1][7])
-                max_price = int(closing_price_data[-1][6])
-                last_price = int(closing_price_data[-1][2])
-                last_trade_time = int(closing_price_data[-1][12])
-                trade_volume = int(closing_price_data[-1][9])
-                trade_value = int(closing_price_data[-1][10])
-                trade_count = int(closing_price_data[-1][8])
-                end_price = int(closing_price_data[-1][3])
-                #print(4)
-
-            else:
-                end_price = yesterday_price
-                last_price = yesterday_price
-                # dt = str(closing_price_data[-1][0]).split(' ')
-                # dt = str(closing_price_data[len(closing_price_data) - 1][0]).split(' ')
-                # last_trade_time = int(dt[1].replace(':', ''))
-                last_trade_time = int(closing_price_data[-1][12])
-                #print(5)
-
-        # ---------------
-        # extract state change
-        status_list = list()
-        row = 0
-        last_status = None
-        is_start_accept_date = True
-        for item in instrument_state_data:
-            last_status = item[2]
-            if item[1] != 1:
-                item.insert(0, en_symbol_12_digit_code)
-                item.append(row)
-                status_list.append(item)
-                row += 1
-            else:
-                is_start_accept_date = False
-
-        status = last_status
-        if is_start_accept_date is True:
-            start_accept_date = instrument_state_data[0][1]
-        else:
-            start_accept_date = 0
-
-        # ---------------
-        if len(person_legal_data) != 0:
-            legal_buy_count = person_legal_data[1]
-            legal_buy_volume = person_legal_data[5]
-            legal_buy_value = person_legal_data[13]
-            legal_buy_avg_price = person_legal_data[17]
-            person_buy_count = person_legal_data[0]
-            person_buy_volume = person_legal_data[4]
-            person_buy_value = person_legal_data[12]
-            person_buy_avg_price = person_legal_data[16]
-            legal_sell_count = person_legal_data[3]
-            legal_sell_volume = person_legal_data[7]
-            legal_sell_value = person_legal_data[15]
-            legal_sell_avg_price = person_legal_data[19]
-            person_sell_count = person_legal_data[2]
-            person_sell_volume = person_legal_data[6]
-            person_sell_value = person_legal_data[14]
-            person_sell_avg_price = person_legal_data[18]
-            # ---------------
-            # تصحیح خطا حقیقی حقوقی
-            if legal_buy_volume + person_buy_volume != trade_volume:
-                beta = trade_volume / (legal_buy_volume + person_buy_volume)
-                legal_buy_volume *= beta
-                person_buy_volume *= beta
-                legal_sell_volume *= beta
-                person_sell_volume *= beta
-
-            if legal_buy_value + person_buy_value != trade_value:
-                beta = trade_value / (legal_buy_value + person_buy_value)
-                legal_buy_value *= beta
-                person_buy_value *= beta
-                legal_sell_value *= beta
-                person_sell_value *= beta
-
-            if legal_buy_volume != 0:
-                legal_buy_avg_price = legal_buy_value / legal_buy_volume
-            else:
-                legal_buy_avg_price = 0
-
-            if person_buy_volume != 0:
-                person_buy_avg_price = person_buy_value / person_buy_volume
-            else:
-                person_buy_avg_price = 0
-
-            if legal_sell_volume != 0:
-                legal_sell_avg_price = legal_sell_value / legal_sell_volume
-            else:
-                legal_sell_avg_price = 0
-
-            if person_sell_volume != 0:
-                person_sell_avg_price = person_sell_value / person_sell_volume
-            else:
-                person_sell_avg_price = 0
-
-        # ---------------
-        # get shareholder list
-        share_holder_list = list()
-        for item in share_holder_data:
-            share_holder_list.append([en_symbol_12_digit_code, date_m, item[0], item[5], item[2], item[3]])
-
-        # ---------------
-        # create second data
-        second_time_series = list()
-        if len(sub_trade_data_list) > 0:
-            open = 0
-            close = 0
-            high = 0
-            low = 0
-            count = 0
-            volume = 0
-            value = 0
-            start_p1 = 0
-            start_p2 = 0
-            start_time_date = 0
-            start = True
-
-            for item in sub_trade_data_list:
-                # canceled trade
-                if item[4] == 1:
+                # existing data
+                if sub_trade_data_list.count([time, num, volume, price, flag]) > 0:
                     continue
 
-                p1 = date_m * 1000000 + item[0]
-                p2 = item[1]
+                sub_trade_data_list.append([time, num, volume, price, flag])
 
-                if start is True:
-                    start = False
-                    open = item[3]
-                    close = item[3]
-                    high = item[3]
-                    low = item[3]
-                    volume = 0
-                    value = 0
-                    count = 0
-                    start_p1 = p1
-                    start_p2 = p2
-                    start_time_date = start_p1
+                if len(sub_trade_data_list) == 1:
+                    min_price = price
+                    max_price = price
 
-                if p1 == start_p1:
-                    if p2 < start_p2:
-                        open = item[3]
+                # ---------------
+                if flag == 0:
 
-                    if p2 > start_p2:
-                        close = item[3]
+                    if num <= min_num:
+                        min_num = num
+                        first_price = price
 
-                    if item[4] < low:
-                        low = item[3]
+                    if num >= max_num:
+                        max_num = num
+                        last_price = price
+                        last_trade_time = time
 
-                    if item[4] > high:
-                        high = item[3]
+                    if min_price > price:
+                        min_price = price
 
-                    volume += item[2]
-                    value += item[2] * item[3]
-                    count += 1
+                    if max_price < price:
+                        max_price = price
+
+                    trade_volume += volume
+                    trade_value += volume * price
+
+                    trade_count += 1
+
+                if trade_count % 100 == 0:
+                    self.set_status('last_run_time', get_now_time_second())
+                    #   self.print_c('sub_trade_data loop count: {0}'.format(trade_count / 100))
+
+            if trade_volume > 0:
+                if trade_volume < base_volume:
+                    end_price = round(((trade_value / trade_volume) - yesterday_price) * (trade_volume / base_volume) +
+                                      yesterday_price)
+                else:
+                    end_price = round(trade_value / trade_volume)
+            else:
+                # ممکن است ریز معاملات خالی باشد
+                if len(closing_price_data) > 1:
+
+                    # sort closing_price_data on [12] and find canceled trade
+                    for i in range(len(closing_price_data)):
+                        closing_price_data[i][2] = int(closing_price_data[i][2])
+                        closing_price_data[i][8] = int(closing_price_data[i][8])
+                        closing_price_data[i][9] = int(closing_price_data[i][9])
+                        closing_price_data[i][12] = int(closing_price_data[i][12])
+                        closing_price_data[i].append(0)  # flag
+
+                    # sort
+                    for i in range(len(closing_price_data) - 1):
+                        min_value = closing_price_data[i][12]
+                        min_index = i
+                        for j in range(i + 1, len(closing_price_data)):
+                            if min_value > closing_price_data[j][12]:
+                                min_value = closing_price_data[j][12]
+                                min_index = j
+                        if min_index != i:
+                            temp = closing_price_data[j]
+                            closing_price_data[min_index] = closing_price_data[i]
+                            closing_price_data[i] = temp
+
+                    # find flag
+                    i = 0
+                    while i < len(closing_price_data):
+                        while closing_price_data[i][8] < i:
+                            index = closing_price_data[i][8]
+                            closing_price_data[index + 1][13] = 1
+                            closing_price_data.pop(i)
+
+                            if i >= len(closing_price_data):
+                                break
+                        i += 1
+
+                    #print(1)
+                    # fail in sub trade date
+                    #for item in closing_price_data:
+                    for i in range(len(closing_price_data)):
+                        if i == 0:
+                            #print(2)
+                            continue
+                        # dt = str(closing_price_data[i][0]).split(' ')
+                        # time = int(dt[1].replace(':', ''))
+                        time = closing_price_data[i][12]
+                        num = closing_price_data[i][8]
+                        volume = closing_price_data[i][9] - closing_price_data[i - 1][9]
+                        # price = (int(closing_price_data[i][10]) - int(closing_price_data[i - 1][10])) / volume
+                        price = closing_price_data[i][2]
+                        flag = closing_price_data[i][13]
+
+                        if sub_trade_data_list.count([time, num, volume, price, flag]) > 0:
+                            #print(3)
+                            continue
+
+                        sub_trade_data_list.append([time, num, volume, price, flag])
+                        # ----------
+
+                    min_price = int(closing_price_data[-1][7])
+                    max_price = int(closing_price_data[-1][6])
+                    last_price = int(closing_price_data[-1][2])
+                    last_trade_time = int(closing_price_data[-1][12])
+                    trade_volume = int(closing_price_data[-1][9])
+                    trade_value = int(closing_price_data[-1][10])
+                    trade_count = int(closing_price_data[-1][8])
+                    end_price = int(closing_price_data[-1][3])
+                    #print(4)
 
                 else:
+                    end_price = yesterday_price
+                    last_price = yesterday_price
+                    # dt = str(closing_price_data[-1][0]).split(' ')
+                    # dt = str(closing_price_data[len(closing_price_data) - 1][0]).split(' ')
+                    # last_trade_time = int(dt[1].replace(':', ''))
+                    last_trade_time = int(closing_price_data[-1][12])
+                    #print(5)
+
+            # ---------------
+            # extract state change
+            status_list = list()
+            row = 0
+            last_status = None
+            is_start_accept_date = True
+            for item in instrument_state_data:
+                last_status = item[2]
+                if item[1] != 1:
+                    item.insert(0, en_symbol_12_digit_code)
+                    item.append(row)
+                    status_list.append(item)
+                    row += 1
+                else:
+                    is_start_accept_date = False
+
+            status = last_status
+            if is_start_accept_date is True:
+                start_accept_date = instrument_state_data[0][1]
+            else:
+                start_accept_date = 0
+
+            # ---------------
+            if len(person_legal_data) != 0:
+                legal_buy_count = person_legal_data[1]
+                legal_buy_volume = person_legal_data[5]
+                legal_buy_value = person_legal_data[13]
+                legal_buy_avg_price = person_legal_data[17]
+                person_buy_count = person_legal_data[0]
+                person_buy_volume = person_legal_data[4]
+                person_buy_value = person_legal_data[12]
+                person_buy_avg_price = person_legal_data[16]
+                legal_sell_count = person_legal_data[3]
+                legal_sell_volume = person_legal_data[7]
+                legal_sell_value = person_legal_data[15]
+                legal_sell_avg_price = person_legal_data[19]
+                person_sell_count = person_legal_data[2]
+                person_sell_volume = person_legal_data[6]
+                person_sell_value = person_legal_data[14]
+                person_sell_avg_price = person_legal_data[18]
+                # ---------------
+                # تصحیح خطا حقیقی حقوقی
+                if legal_buy_volume + person_buy_volume != trade_volume:
+                    beta = trade_volume / (legal_buy_volume + person_buy_volume)
+                    legal_buy_volume *= beta
+                    person_buy_volume *= beta
+                    legal_sell_volume *= beta
+                    person_sell_volume *= beta
+
+                if legal_buy_value + person_buy_value != trade_value:
+                    beta = trade_value / (legal_buy_value + person_buy_value)
+                    legal_buy_value *= beta
+                    person_buy_value *= beta
+                    legal_sell_value *= beta
+                    person_sell_value *= beta
+
+                if legal_buy_volume != 0:
+                    legal_buy_avg_price = legal_buy_value / legal_buy_volume
+                else:
+                    legal_buy_avg_price = 0
+
+                if person_buy_volume != 0:
+                    person_buy_avg_price = person_buy_value / person_buy_volume
+                else:
+                    person_buy_avg_price = 0
+
+                if legal_sell_volume != 0:
+                    legal_sell_avg_price = legal_sell_value / legal_sell_volume
+                else:
+                    legal_sell_avg_price = 0
+
+                if person_sell_volume != 0:
+                    person_sell_avg_price = person_sell_value / person_sell_volume
+                else:
+                    person_sell_avg_price = 0
+
+            # ---------------
+            # get shareholder list
+            share_holder_list = list()
+            for item in share_holder_data:
+                share_holder_list.append([en_symbol_12_digit_code, date_m, item[0], item[5], item[2], item[3]])
+
+            # ---------------
+            # create second data
+            second_time_series = list()
+            if len(sub_trade_data_list) > 0:
+                open = 0
+                close = 0
+                high = 0
+                low = 0
+                count = 0
+                volume = 0
+                value = 0
+                start_p1 = 0
+                start_p2 = 0
+                start_time_date = 0
+                start = True
+
+                for item in sub_trade_data_list:
+                    # canceled trade
+                    if item[4] == 1:
+                        continue
+
+                    p1 = date_m * 1000000 + item[0]
+                    p2 = item[1]
+
+                    if start is True:
+                        start = False
+                        open = item[3]
+                        close = item[3]
+                        high = item[3]
+                        low = item[3]
+                        volume = 0
+                        value = 0
+                        count = 0
+                        start_p1 = p1
+                        start_p2 = p2
+                        start_time_date = start_p1
+
+                    if p1 == start_p1:
+                        if p2 < start_p2:
+                            open = item[3]
+
+                        if p2 > start_p2:
+                            close = item[3]
+
+                        if item[4] < low:
+                            low = item[3]
+
+                        if item[4] > high:
+                            high = item[3]
+
+                        volume += item[2]
+                        value += item[2] * item[3]
+                        count += 1
+
+                    else:
+                        # end = round(float(value) / volume)
+                        second_time_series.append([start_time_date, int(open), int(close),
+                                                   int(high), int(low), volume, value, count])
+                        open = item[3]
+                        close = item[3]
+                        high = item[3]
+                        low = item[3]
+                        count = 1
+                        volume = item[2]
+                        value = item[2] * item[3]
+                        start_p1 = p1
+                        start_p2 = p2
+                        start_time_date = start_p1
+
+                if volume != 0:
                     # end = round(float(value) / volume)
                     second_time_series.append([start_time_date, int(open), int(close),
                                                int(high), int(low), volume, value, count])
-                    open = item[3]
-                    close = item[3]
-                    high = item[3]
-                    low = item[3]
-                    count = 1
-                    volume = item[2]
-                    value = item[2] * item[3]
-                    start_p1 = p1
-                    start_p2 = p2
-                    start_time_date = start_p1
 
-            if volume != 0:
-                # end = round(float(value) / volume)
-                second_time_series.append([start_time_date, int(open), int(close),
-                                           int(high), int(low), volume, value, count])
+            # ---------------
+            # save data to database
+            data = dict()
+            data['en_symbol_12_digit_code'] = en_symbol_12_digit_code
+            data['date_m'] = date_m
+            data['first_price'] = first_price
+            data['last_price'] = last_price
+            data['min_price'] = min_price
+            data['max_price'] = max_price
+            data['end_price'] = end_price
+            data['trade_count'] = trade_count
+            data['trade_volume'] = trade_volume
+            data['trade_value'] = trade_value
+            data['last_trade_time'] = last_trade_time
+            data['yesterday_price'] = yesterday_price
+            data['legal_buy_count'] = legal_buy_count
+            data['legal_buy_volume'] = legal_buy_volume
+            data['legal_buy_value'] = legal_buy_value
+            data['legal_buy_avg_price'] = legal_buy_avg_price
+            data['person_buy_count'] = person_buy_count
+            data['person_buy_volume'] = person_buy_volume
+            data['person_buy_value'] = person_buy_value
+            data['person_buy_avg_price'] = person_buy_avg_price
+            data['legal_sell_count'] = legal_sell_count
+            data['legal_sell_volume'] = legal_sell_volume
+            data['legal_sell_value'] = legal_sell_value
+            data['legal_sell_avg_price'] = legal_sell_avg_price
+            data['person_sell_count'] = person_sell_count
+            data['person_sell_volume'] = person_sell_volume
+            data['person_sell_value'] = person_sell_value
+            data['person_sell_avg_price'] = person_sell_avg_price
+            data['status'] = status
+            data['share_count'] = share_count
+            data['base_volume'] = base_volume
 
-        # ---------------
-        # save data to database
-        data = dict()
-        data['en_symbol_12_digit_code'] = en_symbol_12_digit_code
-        data['date_m'] = date_m
-        data['first_price'] = first_price
-        data['last_price'] = last_price
-        data['min_price'] = min_price
-        data['max_price'] = max_price
-        data['end_price'] = end_price
-        data['trade_count'] = trade_count
-        data['trade_volume'] = trade_volume
-        data['trade_value'] = trade_value
-        data['last_trade_time'] = last_trade_time
-        data['yesterday_price'] = yesterday_price
-        data['legal_buy_count'] = legal_buy_count
-        data['legal_buy_volume'] = legal_buy_volume
-        data['legal_buy_value'] = legal_buy_value
-        data['legal_buy_avg_price'] = legal_buy_avg_price
-        data['person_buy_count'] = person_buy_count
-        data['person_buy_volume'] = person_buy_volume
-        data['person_buy_value'] = person_buy_value
-        data['person_buy_avg_price'] = person_buy_avg_price
-        data['legal_sell_count'] = legal_sell_count
-        data['legal_sell_volume'] = legal_sell_volume
-        data['legal_sell_value'] = legal_sell_value
-        data['legal_sell_avg_price'] = legal_sell_avg_price
-        data['person_sell_count'] = person_sell_count
-        data['person_sell_volume'] = person_sell_volume
-        data['person_sell_value'] = person_sell_value
-        data['person_sell_avg_price'] = person_sell_avg_price
-        data['status'] = status
-        data['share_count'] = share_count
-        data['base_volume'] = base_volume
+            res = self.db.add_share_daily_data(data)
+            if res is not True:
+                result = False
+                error = res
+                error_code = 1001
+                return result, error, error_code
 
-        res = self.db.add_share_daily_data(data)
-        if res is not True:
+            # -------------
+            res = self.db.add_shareholder_data(share_holder_list)
+            if res is not True:
+                result = False
+                error = res
+                error_code = 1002
+                return result, error, error_code
+
+            # -------------
+            res = self.db.add_share_sub_trad_data(sub_trade_data_list, en_symbol_12_digit_code, date_m)
+            if res is not True:
+                result = False
+                error = res
+                error_code = 1003
+                return result, error, error_code
+
+            # -------------
+            res = self.db.add_share_second_data(en_symbol_12_digit_code, second_time_series)
+            if res is not True:
+                result = False
+                error = res
+                error_code = 1004
+                return result, error, error_code
+
+            # -------------
+            if len(status_list) > 0:
+                self.db.add_status(status_list)
+
+            # -------------
+            if is_start_accept_date is True:
+                self.set_start_accept_date(en_symbol_12_digit_code, start_accept_date)
+
+            result = True
+            error = None
+            error_code = -1
+
+            return result, error, error_code
+        except Exception as e:
             result = False
-            error = res
-            return result, error
+            error = e
+            if error_code == -1:
+                error_code = 0
 
-        # res = self.db.update_share_daily_data(data)
-        # if res is not True:
-        #    result = False
-        #    error = res
-        #    return result, error
-
-        # -------------
-        res = self.db.add_shareholder_data(share_holder_list)
-        if res is not True:
-            result = False
-            error = res
-            return result, error
-
-        # -------------
-        res = self.db.add_share_sub_trad_data(sub_trade_data_list, en_symbol_12_digit_code, date_m)
-        if res is not True:
-            result = False
-            error = res
-            return result, error
-
-        # -------------
-        res = self.db.add_share_second_data(en_symbol_12_digit_code, second_time_series)
-        if res is not True:
-            result = False
-            error = res
-            return result, error
-
-        # -------------
-        if len(status_list) > 0:
-            self.db.add_status(status_list)
-
-        # -------------
-        if is_start_accept_date is True:
-            self.set_start_accept_date(en_symbol_12_digit_code, start_accept_date)
-
-        result = True
-        error = None
-
-        return result, error
+            return result, error, error_code
 
     def set_start_accept_date(self, en_symbol_12_digit_code, start_accept_date):
         db_start_accept_date = self.db.get_start_accept_date(en_symbol_12_digit_code)
@@ -1729,7 +1815,7 @@ class Tsetmc:
             return result, error
 
         var_name = 'var ClosingPriceData='  # ---- اطلاعات ثانیه ای----
-        closing_price_data, closing_price_data_error = self.get_var_list(response, var_name)
+        closing_price_data, closing_price_data_error, closing_price_data_error_code = self.get_var_list(response, var_name)
         if closing_price_data_error is not None:
             error = closing_price_data_error
             result = False

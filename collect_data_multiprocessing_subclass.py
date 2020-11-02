@@ -158,7 +158,7 @@ class collect_trade_data_multi_process:
 
         self.max_process = max_process
         self.last_process_id = -1
-        self.max_run_time = 200
+        self.max_run_time = 600
         self.lock_acquire_wait = 15
 
         self.hang_list = list()
@@ -337,8 +337,9 @@ class collect_trade_data_multi_process:
                                             self.print_c('terminate process: {0} ; en_symbol_12_digit_code: {1} ; tsetmc_id: {2} ; date_m: {3} ; process: {4}'.format(p.name, hang_item[0], hang_item[1],hang_item[2], p))
                                             # time.sleep(15)
                                             if self.terminate_process_tree(process=p, include_parent=True, timeout=10) is True:
+                                                # self.db.add_share_to_fail_hang_share(en_symbol_12_digit_code=hang_item[0], date_m=str(hang_item[2]))
+                                                self.db.collect_all_share_data_rollback(en_symbol_12_digit_code=hang_item[0], tsetmc_id=str(hang_item[1]), date_m=hang_item[2], error_msg='hang process', error_code=9000)
 
-                                                self.db.add_share_to_fail_hang_share(en_symbol_12_digit_code=hang_item[0], date_m=hang_item[1])
                                                 self.running_list.remove(hang_item)
                                                 # self.hang_list.remove(hang_item)
 

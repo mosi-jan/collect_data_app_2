@@ -222,6 +222,7 @@ class Database:
                 ' ((a.en_symbol_12_digit_code, a.date_m) not in (SELECT share_daily_data.en_symbol_12_digit_code, share_daily_data.date_m FROM share_daily_data)) AND' \
                 ' ((a.en_symbol_12_digit_code, a.date_m) not in (SELECT fail_integrity_share.en_symbol_12_digit_code, fail_integrity_share.date_m FROM fail_integrity_share WHERE fail_integrity_share.fail_count >= {0})) AND' \
                 ' ((a.en_symbol_12_digit_code, a.date_m) not in (SELECT fail_hang_share.en_symbol_12_digit_code, fail_hang_share.date_m FROM fail_hang_share WHERE fail_hang_share.fail_count >= {1})) AND' \
+                ' ((a.en_symbol_12_digit_code, a.date_m) not in (SELECT fail_big_data_share.en_symbol_12_digit_code, fail_big_data_share.date_m FROM fail_big_data_share)) AND' \
                 ' ((a.en_symbol_12_digit_code, a.date_m) not in (SELECT fail_source_data_share.en_symbol_12_digit_code, fail_source_data_share.date_m FROM fail_source_data_share)) AND' \
                 ' ((a.en_symbol_12_digit_code, a.date_m) not in (SELECT fail_other_share.en_symbol_12_digit_code, fail_other_share.date_m FROM fail_other_share WHERE fail_other_share.fail_count >= {2}))' \
                 .format(max_integrity_count, max_hang_count, max_other_count)
@@ -230,7 +231,7 @@ class Database:
         return self.select_query(query, args, 1)
 
     # -------------
-    def collect_all_share_data_rollback(self, en_symbol_12_digit_code, tsetmc_id, date_m):
+    def collect_all_share_data_rollback(self, en_symbol_12_digit_code, tsetmc_id, date_m, error_msg, error_code):
         query = 'delete from shareholders_data where en_symbol_12_digit_code = %s and date_m = %s'
         args = (en_symbol_12_digit_code, date_m)
         self.command_query(query, args)
@@ -251,13 +252,23 @@ class Database:
         args = (en_symbol_12_digit_code, date_m)
         self.command_query(query, args)
 
-        return self.add_share_to_fail_other_share(en_symbol_12_digit_code, tsetmc_id, date_m)
+        if error_code == 2003:
+            return self.add_share_to_fail_big_data_share(en_symbol_12_digit_code, tsetmc_id, date_m, error_msg, error_code)
+
+        elif error_code == 9000:
+            return self.add_share_to_fail_hang_share(en_symbol_12_digit_code, date_m)
+
+        else:
+            return self.add_share_to_fail_other_share(en_symbol_12_digit_code, tsetmc_id, date_m, error_msg, error_code)
 
     # -------------
-    def add_share_to_fail_other_share(self, en_symbol_12_digit_code, tsetmc_id, date_m):
-        query = 'insert into fail_other_share (en_symbol_12_digit_code, tsetmc_id, date_m) VALUES (%s, %s, %s) ' \
-                'ON DUPLICATE KEY UPDATE fail_count = fail_count + 1'
-        args = (en_symbol_12_digit_code, tsetmc_id, date_m)
+    def add_share_to_fail_other_share(self, en_symbol_12_digit_code, tsetmc_id, date_m, error_msg, error_code):
+        query = 'insert into fail_other_share (en_symbol_12_digit_code, tsetmc_id, date_m, error_msgs, error_codes) VALUES (%s, %s, %s, %s, %s) ' \
+                'ON DUPLICATE KEY UPDATE ' \
+                'fail_count = fail_count + 1, ' \
+                'error_msgs=concat(error_msgs , " ;; " , %s), ' \
+                'error_codes=concat(error_codes , " ;; " , %s)'
+        args = (en_symbol_12_digit_code, tsetmc_id, date_m, error_msg, error_code, error_msg, error_code)
         return self.command_query(query, args)
 
     def add_share_to_fail_hang_share(self, en_symbol_12_digit_code, date_m):
@@ -265,6 +276,15 @@ class Database:
         query = 'insert into fail_hang_share (en_symbol_12_digit_code, date_m) ' \
                 'VALUES (%s, %s) ON DUPLICATE KEY UPDATE fail_count = fail_count + 1'
         args = (en_symbol_12_digit_code, str(date_m))
+        return self.command_query(query, args)
+
+    def add_share_to_fail_big_data_share(self, en_symbol_12_digit_code, tsetmc_id, date_m, error_msg, error_code):
+        query = 'insert into fail_big_data_share (en_symbol_12_digit_code, tsetmc_id, date_m, error_msgs, error_codes) VALUES (%s, %s, %s, %s, %s) ' \
+                'ON DUPLICATE KEY UPDATE ' \
+                'fail_count = fail_count + 1, ' \
+                'error_msgs=concat(error_msgs , " ;; " , %s), ' \
+                'error_codes=concat(error_codes , " ;; " , %s)'
+        args = (en_symbol_12_digit_code, tsetmc_id, date_m, error_msg, error_code, error_msg, error_code)
         return self.command_query(query, args)
 
     def add_share_to_fail_source_data_share(self, en_symbol_12_digit_code, tsetmc_id, date_m):
@@ -383,6 +403,22 @@ class Database:
                 'VALUES (%s, %s, %s, %s, %s, %s, %s)'
         args = arg
         return self.command_query_many(query, args)
+    def add_share_second_data(self, en_symbol_12_digit_code, args_list):
+        query = 'INSERT IGNORE INTO share_second_data (en_symbol_12_digit_code, date_time, ' \
+                'open_price, close_price, high_price, low_price, ' \
+                'trade_volume, trade_value, trade_count) ' \
+                'VALUES (\'{0}\', %s, %s, %s, %s, %s, %s, %s, %s)'.format(en_symbol_12_digit_code)
+
+        args = args_list
+
+        if len(args) == 1:
+            return self.command_query(query, args[0])
+
+        elif len(args) > 1:
+            return self.command_query_many(query, args)
+
+        return True  # 'empty arg list'
+
     def add_status(self, status_list):
         # status_list[en_symbol, date_m, change_time, status, change_number]
         query = 'INSERT IGNORE INTO share_status ' \
@@ -434,23 +470,6 @@ class Database:
         args = (0, 1, en_symbol_12_digit_code)
 
         return self.command_query(query, args, True)
-
-    # ----------------------------------
-    def add_share_second_data(self, en_symbol_12_digit_code, args_list):
-        query = 'INSERT IGNORE INTO share_second_data (en_symbol_12_digit_code, date_time, ' \
-                'open_price, close_price, high_price, low_price, ' \
-                'trade_volume, trade_value, trade_count) ' \
-                'VALUES (\'{0}\', %s, %s, %s, %s, %s, %s, %s, %s)'.format(en_symbol_12_digit_code)
-
-        args = args_list
-
-        if len(args) == 1:
-            return self.command_query(query, args[0])
-
-        elif len(args) > 1:
-            return self.command_query_many(query, args)
-
-        return True  # 'empty arg list'
 
     # ----------------------------------
     def is_open_day(self, date_m):
@@ -576,6 +595,34 @@ class Database:
             return res[0][0]
         return False
 
+
+    def test(self):
+        query = 'SELECT count(*) FROM share_sub_trad_data'
+        #query = 'SELECT count(*) FROM `share_sub_trad_data` WHERE volume < 0'
+
+        args = ()
+
+        return self.select_query(query, args, 1)
+
+    def get_all_share_info(self):
+        query = 'SELECT * FROM cd2.share_info'
+        args = ()
+        return self.select_query(query, args, 1)
+
+    def get_all_fail_sub_trade(self,en_symbol_12_digit_code):
+        query = 'SELECT en_symbol_12_digit_code, date_m FROM share_sub_trad_data WHERE en_symbol_12_digit_code=%s and volume<0 GROUP BY date_m'
+        args = (en_symbol_12_digit_code,)
+        return self.select_query(query, args, 1)
+
+    def transfer_share_sub_trad_data(self, source_table, destination_table, en_symbol_12_digit_code):
+        #query = 'INSERT INTO share_sub_trad_data_backup SELECT * FROM share_sub_trad_data WHERE en_symbol_12_digit_code=%s'
+        query = 'INSERT IGNORE INTO share_sub_trad_data_backup SELECT * FROM share_sub_trad_data WHERE en_symbol_12_digit_code=%s'
+        # query = 'SELECT count(*) FROM `share_sub_trad_data` WHERE volume < 0'
+
+        args = (en_symbol_12_digit_code)
+
+        return self.command_query(query, args, True)
+
 # ==========================================
 class Database_old:
 
@@ -648,8 +695,6 @@ class Database_old:
         args = (en_symbol_12_digit_code)
         return self.command_query(query, args)
 
-
-
     def clean_table(self, source_table_name):
         query = 'delete from {0} where 1'.format(source_table_name)
         args = ()
@@ -658,15 +703,12 @@ class Database_old:
             return False
         return True
 
-
     # ----------------------------------
     def set_database_update_time(self, update_time):
         query = 'update db_setting set update_time=%s'
         args = (update_time)
 
         return self.command_query(query, args)
-
-
 
     def get_open_day_count(self):
         query = 'select count(*) from open_days'
@@ -676,9 +718,6 @@ class Database_old:
         if res is not False:
             return int(res[0][0])
         return False
-
-
-
 
     def update_share_daily_data(self, data):
         query = 'update share_daily_data set end_price=%s, trade_count=%s, trade_volume=%s, trade_value=%s, ' \

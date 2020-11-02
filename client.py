@@ -5,6 +5,8 @@ from collect_data_multiprocessing_subclass import collect_trade_data_multi_proce
 from termcolor import colored
 from time import sleep
 
+from my_time import get_now_time_second
+
 
 class Client:
     def __init__(self, client_id, db_info):
@@ -92,14 +94,24 @@ class Client:
             #  load wait list from server
             self.print_c('load wait list')
 
+            # print('self.setting[last]:{}'.format(self.setting['last']))
+            # print('self.setting[offset]:{}'.format(self.setting['offset']))
+            # print('self.setting[end]:{}'.format(self.setting['end']))
+
+
             # calc offset
             if self.setting['last'] + self.setting['offset'] > self.setting['end']:
                 offset = self.setting['end'] - self.setting['first']
             else:
                 offset = self.setting['last'] + self.setting['offset'] - self.setting['first']
 
+            # print('offset:{}'.format(offset))
+
             # گرتن لیست روز نماد از سرور
             wait_list = self.db_obj.get_wait_list(start_index=self.setting['first'], offset=offset)
+
+            # print(wait_list)
+            # print(len(wait_list))
             # wait_list=()
             if wait_list is False:
                 self.print_c('cant get wait list from server')
@@ -109,6 +121,7 @@ class Client:
             self.setting['last'] = self.setting['first'] + offset
             self.print_c('save setting')
             self.db_obj.set_client_runtime_setting(client_id=self.client_id, data=self.setting)
+            # sleep(7)
 
             if len(wait_list) > 0:
                 self.print_c('collect data')
@@ -138,6 +151,8 @@ class Client:
                 # print('sum new record: {}'.format(sum_new_record))
     # ---------------------------------------------------
             sleep(1)
+            # print('end one loop')
+            # sleep(10)
 
     def collect_all_shares_info(self):  # multi processing
         collect_data_obj = collect_trade_data_multi_process(database_info=self.db_info,
@@ -228,10 +243,49 @@ class Client:
 
 
     # ====================
-    def test_db_function(self):
-        res = self.db_obj.get_latest_open_day()
-        print(res)
+    def test_db_function_negative_volumn(self):
+        now_total = get_now_time_second()
+        i = 0
+        symbols = self.db_obj.get_all_share_info()
+        print('total symbol: {}'.format(len(symbols)))
+        for symbol in symbols:
+            now = get_now_time_second()
+            i = i + 1
+            res = self.db_obj.get_all_fail_sub_trade(en_symbol_12_digit_code=symbol[0])
+
+            if res is not False:
+                for item in res:
+                    self.db_obj.collect_all_share_data_rollback(en_symbol_12_digit_code=item[0], tsetmc_id=1, date_m=item[1], error_msg='for negative volume', error_code=9000)
+                print('{}: en_symbol_12_digit_code: {}  day_count: {}  runtime: {}'.format(i, symbol[0], len(res), get_now_time_second() - now))
+            else:
+                print('{}: en_symbol_12_digit_code: {}  day_count: {}  runtime: {}'.format(i, item[0], 'fail', get_now_time_second()-now))
+
+        print(get_now_time_second()-now_total)
+
+
+    def test_db_function_transfer(self):
+        now_total = get_now_time_second()
+        i = 0
+        symbol = self.db_obj.get_all_share_info()
+        source_table='share_sub_trad_data'
+        destination_table='share_sub_trad_data_backup'
+        print('total symbol: {}'.format(len(symbol)))
+        for item in symbol:
+            now = get_now_time_second()
+            i= i+1
+            self.db_obj.transfer_share_sub_trad_data(source_table, destination_table, en_symbol_12_digit_code=item[0])
+            print('{}: en_symbol_12_digit_code: {}  runtime: {}'.format(i, item[0], get_now_time_second()-now))
+            #sleep(10)
+
+        print(get_now_time_second()-now_total)
+
+
+        # ----------------
+        # res = self.db_obj.get_wait_list(start_index=0, offset=10)
+        #res = self.db_obj.test()
+        #print(res)
         #print(len(res))
+
     # ====================
     def collect_data(self, wait_list):
         collect_data_obj = collect_trade_data_multi_process(database_info=self.db_info,

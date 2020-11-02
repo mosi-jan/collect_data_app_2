@@ -10,6 +10,11 @@ if __name__ == '__main__':
 
     cli = Client(client_id=app_setting.client_id,
                  db_info=app_setting.get_db_info(db_server_id=app_setting.db_server_id))
+    cli.test_db_function_transfer()
+    print('11')
+    sleep(100)
+    exit(0)
+
 
     while True:
         now_time = get_now_time_datetime()
@@ -26,14 +31,14 @@ if __name__ == '__main__':
                 continue
 
         # update share info
-        if now_time.day in (1, 15):
-            print('collect_all_shares_info: {}'.format(cli.collect_all_shares_info()))
+        #if now_time.day in (1, 15):
+        #    print('collect_all_shares_info: {}'.format(cli.collect_all_shares_info()))
 
         # update index data
-        print('collect_all_index_daily_data error: {}'.format(cli.collect_all_index_daily_data()))
+        # print('collect_all_index_daily_data error: {}'.format(cli.collect_all_index_daily_data()))
 
         # find source fail data
-        print('find_shares_fail_source_data error: {}'.format(cli.find_shares_fail_source_data()))
+        # print('find_shares_fail_source_data error: {}'.format(cli.find_shares_fail_source_data()))
 
         # update trade data
         print('collect_all_share_data: {}'.format(cli.collect_all_share_data()))
