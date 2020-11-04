@@ -1,6 +1,7 @@
 from client import Client
 import app_setting
 from my_time import get_now_time_datetime
+from my_time import get_now_time_second
 import datetime
 from time import sleep
 
@@ -10,9 +11,37 @@ if __name__ == '__main__':
 
     cli = Client(client_id=app_setting.client_id,
                  db_info=app_setting.get_db_info(db_server_id=app_setting.db_server_id))
-    cli.test_db_function_transfer()
+    # cli.test_db_function_transfer()
+    print('transfer share_second_data_part : start')
+    source_table = 'share_second_data'
+    destination_table = 'share_second_data_part'
+    cli.test_db_function_transfer(source_table=source_table, destination_table=destination_table)
+    print('transfer share_second_data_part : end')
+    #exit(0)
+
+    print('transfer share_sub_trad_data : start')
+    source_table = 'share_sub_trad_data'
+    destination_table = 'share_sub_trad_data_part'
+    cli.test_db_function_transfer(source_table=source_table, destination_table=destination_table)
+    print('transfer share_sub_trad_data : end')
+    exit(0)
+
+
+
+    start = get_now_time_second()
+    cli.get_table_records('share_sub_trad_data')
+    print('share_sub_trad_data runtime: {}'.format(get_now_time_second() - start))
+    print(2)
+    exit(0)
+
+
+    start = get_now_time_second()
+    cli.get_table_records('share_sub_trad_data_backup')
+    print('share_sub_trad_data_backup runtime: {}'.format(get_now_time_second() - start))
+    print(3)
+
     print('11')
-    sleep(100)
+    # sleep(100)
     exit(0)
 
 

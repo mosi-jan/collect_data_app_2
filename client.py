@@ -262,18 +262,17 @@ class Client:
 
         print(get_now_time_second()-now_total)
 
-
-    def test_db_function_transfer(self):
+    def test_db_function_transfer(self,source_table,destination_table):
         now_total = get_now_time_second()
         i = 0
         symbol = self.db_obj.get_all_share_info()
-        source_table='share_sub_trad_data'
-        destination_table='share_sub_trad_data_backup'
+        #source_table='share_sub_trad_data'
+        #destination_table='share_sub_trad_data_backup'
         print('total symbol: {}'.format(len(symbol)))
         for item in symbol:
             now = get_now_time_second()
             i= i+1
-            self.db_obj.transfer_share_sub_trad_data(source_table, destination_table, en_symbol_12_digit_code=item[0])
+            self.db_obj.transfer_share_sub_trad_data(source_table=source_table, destination_table=destination_table, en_symbol_12_digit_code=item[0])
             print('{}: en_symbol_12_digit_code: {}  runtime: {}'.format(i, item[0], get_now_time_second()-now))
             #sleep(10)
 
@@ -286,6 +285,8 @@ class Client:
         #print(res)
         #print(len(res))
 
+    def get_table_records(self, table_name):
+        print(self.db_obj.get_table_records_count(table_name))
     # ====================
     def collect_data(self, wait_list):
         collect_data_obj = collect_trade_data_multi_process(database_info=self.db_info,

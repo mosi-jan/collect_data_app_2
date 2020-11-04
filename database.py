@@ -616,13 +616,21 @@ class Database:
 
     def transfer_share_sub_trad_data(self, source_table, destination_table, en_symbol_12_digit_code):
         #query = 'INSERT INTO share_sub_trad_data_backup SELECT * FROM share_sub_trad_data WHERE en_symbol_12_digit_code=%s'
-        query = 'INSERT IGNORE INTO share_sub_trad_data_backup SELECT * FROM share_sub_trad_data WHERE en_symbol_12_digit_code=%s'
+        #query = 'INSERT IGNORE INTO share_sub_trad_data_backupshare_sub_trad_data_backup SELECT * FROM share_sub_trad_data WHERE en_symbol_12_digit_code=%s'
+        query = 'INSERT IGNORE INTO {0} SELECT * FROM {1} WHERE en_symbol_12_digit_code=%s'.format(destination_table, source_table)
         # query = 'SELECT count(*) FROM `share_sub_trad_data` WHERE volume < 0'
 
         args = (en_symbol_12_digit_code)
 
         return self.command_query(query, args, True)
 
+    def get_table_records_count(self, table_Name):
+        query = 'select count(*) from {}'.format(table_Name)
+        args = ()
+        res = self.select_query(query, args, 1)
+        if res is not False:
+            res = res[0][0]
+        return res
 # ==========================================
 class Database_old:
 
