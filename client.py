@@ -98,7 +98,6 @@ class Client:
             # print('self.setting[offset]:{}'.format(self.setting['offset']))
             # print('self.setting[end]:{}'.format(self.setting['end']))
 
-
             # calc offset
             if self.setting['last'] + self.setting['offset'] > self.setting['end']:
                 offset = self.setting['end'] - self.setting['first']
@@ -171,8 +170,9 @@ class Client:
     def collect_all_shares_info_single_processing(self):  # single processing
         from tsetmc import Tsetmc
 
-        obj = Tsetmc(id=self.client_id, db_info=self.db_info,lock=None, wait_list=None, complete_list=None, running_list=None, fail_list=None, status={},
-                 log_file_name=None, log_table_name=None, logging_mod=None, log_obj=None, excel_files_path=None)
+        obj = Tsetmc(id=self.client_id, db_info=self.db_info, lock=None, wait_list=None, complete_list=None,
+                     running_list=None, fail_list=None, status={}, log_file_name=None, log_table_name=None,
+                     logging_mod=None, log_obj=None, excel_files_path=None)
 
         res = obj.collect_all_shares_info()
 
@@ -181,8 +181,9 @@ class Client:
     def collect_all_index_daily_data(self):
         from tsetmc import Tsetmc
 
-        obj = Tsetmc(id=self.client_id, db_info=self.db_info,lock=None, wait_list=None, complete_list=None, running_list=None, fail_list=None, status={},
-                 log_file_name=None, log_table_name=None, logging_mod=None, log_obj=None, excel_files_path=None)
+        obj = Tsetmc(id=self.client_id, db_info=self.db_info, lock=None, wait_list=None, complete_list=None,
+                     running_list=None, fail_list=None, status={}, log_file_name=None, log_table_name=None,
+                     logging_mod=None, log_obj=None, excel_files_path=None)
 
         res = obj.collect_all_index_daily_data(excel_path='', mod=1)
 
@@ -223,7 +224,6 @@ class Client:
         if len(wait_list) > 0:
             self.print_c('find shares fail source data')
 
-
             # run function to test list
             collect_data_obj = collect_trade_data_multi_process(database_info=self.db_info,
                                                                 max_process=self.setting['max_process'],
@@ -238,9 +238,6 @@ class Client:
             return res, None
 
         return True, 'empty candidate list'
-
-
-
 
     # ====================
     def test_db_function_negative_volumn(self):
@@ -258,7 +255,7 @@ class Client:
                     self.db_obj.collect_all_share_data_rollback(en_symbol_12_digit_code=item[0], tsetmc_id=1, date_m=item[1], error_msg='for negative volume', error_code=9000)
                 print('{}: en_symbol_12_digit_code: {}  day_count: {}  runtime: {}'.format(i, symbol[0], len(res), get_now_time_second() - now))
             else:
-                print('{}: en_symbol_12_digit_code: {}  day_count: {}  runtime: {}'.format(i, item[0], 'fail', get_now_time_second()-now))
+                print('{}: en_symbol_12_digit_code: {}  day_count: {}  runtime: {}'.format(i, symbol[0], 'fail', get_now_time_second()-now))
 
         print(get_now_time_second()-now_total)
 
