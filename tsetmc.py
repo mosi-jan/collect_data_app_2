@@ -26,6 +26,26 @@ class My_Response:
 
 class Tsetmc:
 
+    # error_codes:
+    # -1 ==> no error
+    # 9000 ==> hang process
+
+    # 2001 ==> error on get_var_list function: cant find start position
+    # 2002 ==> error on get_var_list function: cant find end position
+    # 2003 ==> error on get_var_list function: much long list
+    # 2004 ==> error on get_var_list function: get_var_list another error
+
+    # 1001 ==> error on database function: add_share_daily_data
+    # 1002 ==> error on database function: add_shareholder_data
+    # 1003 ==> error on database function: add_share_sub_trad_data
+    # 1004 ==> error on database function: add_share_second_data
+    # 1005 ==> error on database function: reset_end_accept_date
+    # 1006 ==> error on database function: add_share_to_fail_source_data_share
+    # 1007 ==> error on database function: set_end_accept_date
+
+    # < 1000 ==> html error code
+    # -----------------------------------------------------------------------
+
     def __init__(self, id, db_info, lock, wait_list, complete_list, running_list, fail_list, status,
                  log_file_name=None, log_table_name=None, logging_mod=None, log_obj=None, excel_files_path=None):
         self.tsetmc_base_url = 'http://www.tsetmc.com/Loader.aspx'
@@ -1702,6 +1722,8 @@ class Tsetmc:
 
     # -------------------
     def find_all_share_source_fail_data(self, latest_day):
+        error = None
+        error_code = -1
         lock_status = False
         self.print_c('worker: {0} :{1}'.format(current_process().name, 'start find_all_share_source_fail_data function'))
 
@@ -1754,7 +1776,7 @@ class Tsetmc:
             try:
                 self.print_c('worker: {0} :{1}'.format(current_process().name, 'start collect data'))
                 self.set_status('state', 'running')
-                result, error = self.test_share_end_accept_date(self.current_running_share, latest_day)
+                result, error, error_code = self.test_share_end_accept_date(self.current_running_share, latest_day)
 
                 if result is False:
                     self.print_c('--- result: {0}, error: {1}'.format(result, error))
@@ -1781,7 +1803,8 @@ class Tsetmc:
 
                 try:
                     self.print_c('worker: {0} : except: {1}'.format(current_process().name, 'rollback data'))
-                    self.db.collect_all_share_data_rollback(en_symbol_12_digit_code, tsetmc_id, date_m)
+                    self.db.collect_all_share_data_rollback(en_symbol_12_digit_code, tsetmc_id, date_m,
+                                                            error_msg=error, error_code=error_code)
                 finally:
                     self.lock.acquire()
                     self.running_list.remove(self.current_running_share)
@@ -1800,6 +1823,7 @@ class Tsetmc:
     def test_share_end_accept_date(self, current_running_share_info, latest_day):
         result = None
         error = None
+        error_code = -1
 
         en_symbol_12_digit_code = current_running_share_info[0]
         tsetmc_id = current_running_share_info[1]
@@ -1811,43 +1835,53 @@ class Tsetmc:
         # check response code
         if response.status_code != 200:
             error = 'html error code:{0}'.format(response.status_code)
+            error_code = response.status_code
             result = False
-            return result, error
+            return result, error, error_code
 
         var_name = 'var ClosingPriceData='  # ---- اطلاعات ثانیه ای----
         closing_price_data, closing_price_data_error, closing_price_data_error_code = self.get_var_list(response, var_name)
         if closing_price_data_error is not None:
             error = closing_price_data_error
+            error_code = closing_price_data_error_code
             result = False
-            return result, error
+            return result, error, error_code
 
         if len(closing_price_data) == 0:  # روز غیر معاملاتی
             candidate_end_accept_date = date_m  # کاندید روز حذف نماد
-            self.set_end_accept_date(en_symbol_12_digit_code, candidate_end_accept_date)
-            print(1)
-            error = None
-            result = True
-            return result, error
+            res = self.set_end_accept_date(en_symbol_12_digit_code, candidate_end_accept_date)
+            if res is True:
+                error = None
+                error_code = -1
+                result = True
+            else:
+                error = res
+                error_code = 1007
+                result = False
+            return result, error, error_code
         else:
             # add share to fail source data table
             res = self.db.add_share_to_fail_source_data_share(en_symbol_12_digit_code=en_symbol_12_digit_code,
-                                                                 tsetmc_id=tsetmc_id,
-                                                                 date_m=date_m)
+                                                              tsetmc_id=tsetmc_id,
+                                                              date_m=date_m)
 
             if res is True:
                 # reset_end_accept_date
                 res = self.db.reset_end_accept_date(en_symbol_12_digit_code=en_symbol_12_digit_code)
                 if res is True:
                     error = None
+                    error_code = -1
                     result = True
                 else:
                     error = res
+                    error_code = 1005
                     result = False
             else:
                 error = res
+                error_code = 1006
                 result = False
 
-            return result, error
+            return result, error, error_code
 
 
 tsetmc_excel_path = 'C:\\Users\\Mostafa_Laptop\\Documents\\TseClient 2.00\\'
