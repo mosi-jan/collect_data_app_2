@@ -30,6 +30,8 @@ class Tsetmc:
     # -1 ==> no error
     # 9000 ==> hang process
 
+    # 3001 ==> error on get_share_data function: any error
+
     # 2001 ==> error on get_var_list function: cant find start position
     # 2002 ==> error on get_var_list function: cant find end position
     # 2003 ==> error on get_var_list function: much long list
@@ -293,6 +295,8 @@ class Tsetmc:
         # -1 ==> no error
         # 9000 ==> hang process
 
+        # 3001 ==> error on get_share_data function: any error
+
         # 2001 ==> error on get_var_list function: cant find start position
         # 2002 ==> error on get_var_list function: cant find end position
         # 2003 ==> error on get_var_list function: much long list
@@ -302,6 +306,7 @@ class Tsetmc:
         # 1002 ==> error on database function: add_shareholder_data
         # 1003 ==> error on database function: add_share_sub_trad_data
         # 1004 ==> error on database function: add_share_second_data
+
         # < 1000 ==> html error code
         # -----------------------------------------------------------------------
         result = None
@@ -449,7 +454,7 @@ class Tsetmc:
                 num = int(item[0])
                 time = int(item[1].replace(':', ''))
                 volume = int(item[2])
-                price = int(item[3])
+                price = int(float(item[3]))
                 flag = int(item[4])
 
                 # existing data
@@ -811,9 +816,9 @@ class Tsetmc:
             return result, error, error_code
         except Exception as e:
             result = False
-            error = e
+            error = str(e)
             if error_code == -1:
-                error_code = 0
+                error_code = 3001
 
             return result, error, error_code
 
